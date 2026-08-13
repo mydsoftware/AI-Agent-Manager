@@ -1,27 +1,31 @@
 # AI-Agent-Manager
 
-Multi-agent orchestration core.
+هسته مدیریت و هماهنگی چندایجنتی.
 
-## Goal
+## هدف
 
-The Manager is the control plane for a family of specialist AI agents. It decomposes user requests into tasks, routes tasks to registered specialists, tracks dependencies and results, and can use a GitHub adapter for repository operations.
+Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. این بخش درخواست کاربر را به وظایف کوچک‌تر تقسیم می‌کند، وظایف را به ایجنت‌های ثبت‌شده می‌سپارد، وابستگی‌ها و نتایج را پیگیری می‌کند و می‌تواند برای عملیات مخزن از رابط GitHub استفاده کند.
 
-## v0.1 implemented
+## قابلیت‌های پیاده‌سازی‌شده نسخه ۰.۱
 
-- Agent Registry
-- Task model
-- Dependency-aware Manager loop
-- Provider-neutral GitHub Adapter
-- Specialist registry bootstrap
-- Automated pytest workflow
-- Initial Manager tests
+- ثبت و مدیریت ایجنت‌ها
+- مدل وظیفه
+- حلقه مدیریت با پشتیبانی از وابستگی بین وظایف
+- رابط GitHub مستقل از ارائه‌دهنده
+- راه‌اندازی اولیه ایجنت‌های تخصصی
+- گردش‌کار خودکار تست با pytest
+- تست‌های اولیه Manager
 
-## Planned runtime
+## معماری اجرای هدف
 
 ```text
-User -> Manager -> Planner/Router -> Specialist Agents -> Tools -> Manager -> Result
-                                      |
-                                      +-> GitHub Adapter
+کاربر → Manager → برنامه‌ریز/مسیریاب → ایجنت‌های تخصصی → ابزارها → Manager → نتیجه
+                                      │
+                                      └→ رابط GitHub
 ```
 
-The concrete AI model/runtime and GitHub credentials are injected by the host application. Secrets are never stored in this repository.
+مدل هوش مصنوعی، محیط اجرای واقعی و اطلاعات دسترسی GitHub توسط برنامه میزبان تزریق می‌شوند. اطلاعات محرمانه هرگز نباید در این مخزن ذخیره شوند.
+
+## قانون زبان پروژه
+
+تمام READMEها، مستندات، توضیحات، راهنماها، کامنت‌های کد و پیام‌های کاربری پروژه باید فارسی باشند. نام متغیرها، کلاس‌ها، توابع، مسیر فایل‌ها و شناسه‌های فنی می‌توانند انگلیسی و استاندارد باقی بمانند.
