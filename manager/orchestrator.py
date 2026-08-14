@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from manager.decision import DecisionEngine
 from manager.intention import IntentParser
 from manager.memory import Memory
-from manager.planner import Planner
 from manager.report import ManagerReport
 from manager.task_factory import TaskFactory
 from manager.executor import TaskExecutor
@@ -11,17 +11,26 @@ from manager.executor import TaskExecutor
 class ManagerOrchestrator:
     """تمام اجزای Manager را برای اجرای یک درخواست هماهنگ می‌کند."""
 
-    def __init__(self, planner: Planner | None = None, memory: Memory | None = None) -> None:
+    def __init__(self, memory: Memory | None = None) -> None:
         self.intent_parser = IntentParser()
-        self.planner = planner or Planner(self.intent_parser)
+        self.decision_engine = DecisionEngine()
         self.task_factory = TaskFactory()
         self.memory = memory or Memory()
 
     def execute(self, request: str, executor: TaskExecutor, agent: str | None = None) -> ManagerReport:
-        """درخواست را تحلیل، به وظایف تبدیل و اجرا می‌کند."""
+        """درخواست را تحلیل، تصمیم‌گیری، به وظایف تبدیل و اجرا می‌کند."""
         intent = self.intent_parser.parse(request)
+        decision = self.decision_engine.decide(intent)
         if agent:
-            intent.agent = agent
+            decision.agent = agent
+            decision.reason = "ایجنت توسط درخواست‌کننده مشخص شده است."
+            decision.confidence = 1.0
+        intent.agent = decision.agent
+        self.memory.add("تصمیم Manager", {
+            "agent": decision.agent,
+            "reason": decision.reason,
+            "confidence": decision.confidence,
+        })
         tasks = self.task_factory.create(intent)
         self.memory.add("شروع اجرای درخواست", request)
         try:
