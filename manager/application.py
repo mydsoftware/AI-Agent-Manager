@@ -21,9 +21,9 @@ class ManagerApplication:
         self.executor = TaskExecutor(self.loop)
 
     def run(self, task: Task) -> str:
-        """اگر ایجنت صریح تعیین نشده باشد، ایجنت مناسب را خودکار انتخاب و سپس اجرا می‌کند."""
+        """ایجنت مناسب را خودکار انتخاب و سپس وظیفه را اجرا می‌کند."""
         decision = self.intelligent_router.select(task)
-        routed_task = Task(id=task.id, agent=decision.agent, description=task.description)
+        routed_task = Task(id=task.id, title=task.title, description=task.description, agent=decision.agent)
         return self.executor.run([routed_task])[0]
 
     def run_many(self, tasks: list[Task]) -> list[str]:
@@ -31,11 +31,11 @@ class ManagerApplication:
         routed = []
         for task in tasks:
             decision = self.intelligent_router.select(task)
-            routed.append(Task(id=task.id, agent=decision.agent, description=task.description))
+            routed.append(Task(id=task.id, title=task.title, description=task.description, agent=decision.agent, depends_on=task.depends_on))
         return self.executor.run(routed)
 
     def route(self, task: Task) -> str:
-        """بدون اجرا، ایجنت انتخاب‌شده و دلیل انتخاب را برمی‌گرداند."""
+        """بدون اجرا، ایجنت انتخاب‌شده را برمی‌گرداند."""
         return self.intelligent_router.select(task).agent
 
     def agents(self) -> list[str]:
