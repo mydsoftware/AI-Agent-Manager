@@ -5,6 +5,7 @@ from typing import Dict, Type
 from .base_agent import BaseAgent
 from .developer_agent import DeveloperAgent
 from .github_agent import GitHubAgent
+from .github_project_agent import GitHubProjectAgent
 from .qa_agent import QAAgent
 from .research_agent import ResearchAgent
 
@@ -37,4 +38,5 @@ def create_default_registry() -> SpecialistRegistry:
     registry.register(DeveloperAgent)
     registry.register(QAAgent)
     registry.register(GitHubAgent)
+    registry.register(GitHubProjectAgent)
     return registry
