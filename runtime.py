@@ -4,8 +4,8 @@ from agents.registry import create_default_registry
 from manager.executor import TaskExecutor
 from manager.loop import AgenticLoop
 from manager.memory import Memory
+from manager.orchestrator import ManagerOrchestrator
 from manager.persistent_memory import PersistentMemory
-from manager.planner import Planner
 from manager.report import ManagerReport
 from manager.router import Router
 from manager.task import Task
@@ -21,17 +21,12 @@ class ManagerRuntime:
         self.persistent_memory = PersistentMemory(database_path)
         self.loop = AgenticLoop(self.router, self.memory)
         self.executor = TaskExecutor(self.loop)
-        self.planner = Planner()
+        self.orchestrator = ManagerOrchestrator(memory=self.memory)
 
     def run(self, request: str, agent: str = "developer") -> ManagerReport:
-        """درخواست کاربر را برنامه‌ریزی، اجرا، ثبت و گزارش می‌کند."""
+        """درخواست کاربر را از تحلیل نیت تا گزارش نهایی اجرا می‌کند."""
         self.persistent_memory.add("شروع درخواست", {"request": request, "agent": agent})
-        tasks = self.planner.plan(request, agent)
-        try:
-            self.executor.run(tasks)
-        except Exception as error:
-            self.persistent_memory.add("خطای درخواست", str(error))
-        report = ManagerReport(tasks)
+        report = self.orchestrator.execute(request, self.executor, agent)
         self.persistent_memory.add("پایان درخواست", report.to_dict())
         return report
 
