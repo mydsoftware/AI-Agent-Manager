@@ -17,6 +17,7 @@ class GitHubClient(Protocol):
     def put_file(self, repository: str, path: str, content: str, message: str, branch: str, sha: str | None = None) -> Any: ...
     def create_branch(self, repository: str, branch: str, base: str) -> Any: ...
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any: ...
+    def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any: ...
 
 
 class GitHubAPIClient:
@@ -65,6 +66,15 @@ class GitHubAPIClient:
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any:
         return self._request("POST", f"/repos/{repository}/pulls", {"title": title, "head": head, "base": base, "body": body, "draft": draft})
 
+    def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any:
+        path = f"/repos/{repository}/actions/runs"
+        if workflow:
+            path = f"/repos/{repository}/actions/workflows/{workflow}/runs"
+        query = "?per_page=10"
+        if branch:
+            query += f"&branch={branch}"
+        return self._request("GET", path + query)
+
 
 @dataclass
 class GitHubAdapter:
@@ -86,3 +96,6 @@ class GitHubAdapter:
 
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any:
         return self.client.create_pull_request(repository, head, base, title, body, draft)
+
+    def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any:
+        return self.client.workflow_runs(repository, branch, workflow)
