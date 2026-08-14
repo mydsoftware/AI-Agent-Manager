@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import inspect
 from typing import Callable
 
 from agents.code_review_agent import CodeReviewAgent
@@ -50,17 +51,20 @@ class EngineeringLoop:
 
     @staticmethod
     def _invoke_repair(repair: Callable[..., object], plan: dict[str, object], analysis: FailureAnalysis, status: str) -> object:
-        """API قدیمی repair(status) و API جدید repair(plan, analysis) را پشتیبانی می‌کند."""
+        """پشتیبانی از API جدید repair(plan, analysis) و API قدیمی repair(status)."""
         try:
-            return repair(plan, analysis)
-        except TypeError as error:
+            signature = inspect.signature(repair)
+            params = list(signature.parameters.values())
+            positional = [p for p in params if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+            has_varargs = any(p.kind == p.VAR_POSITIONAL for p in params)
+            if has_varargs or len(positional) >= 2:
+                return repair(plan, analysis)
+            return repair(status)
+        except (TypeError, ValueError):
             try:
-                return repair(analysis)
+                return repair(plan, analysis)
             except TypeError:
-                try:
-                    return repair(status)
-                except TypeError:
-                    raise error
+                return repair(status)
 
     def run(self, create_branch: Callable[[], object], apply_change: Callable[[], object], check_ci: Callable[[], str], repair: Callable[..., object], create_pr: Callable[[], object], get_ci_log: Callable[[], str] | None = None, get_diff: Callable[[], str] | None = None, review_change: Callable[[object], object] | None = None, dependency_report: Callable[[], str] | None = None, security_scan: Callable[[str, str | None], object] | None = None) -> EngineeringResult:
         try:
