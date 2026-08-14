@@ -26,16 +26,18 @@ class DeveloperAgent(BaseAgent):
         branch = command.get("branch")
 
         if repository and change and branch:
-            return json.dumps(
-                {
-                    "type": "development_plan",
-                    "repository": repository,
-                    "branch": branch,
-                    "change": change,
-                    "engineering_loop": True,
-                },
-                ensure_ascii=False,
-            )
+            plan = {
+                "type": "development_plan",
+                "repository": repository,
+                "branch": branch,
+                "change": change,
+                "base": command.get("base", "main"),
+                "workflow": command.get("workflow"),
+                "repair_change": command.get("repair_change"),
+                "pr": command.get("pr", {}),
+                "engineering_loop": True,
+            }
+            return json.dumps(plan, ensure_ascii=False)
 
         return json.dumps(
             {
