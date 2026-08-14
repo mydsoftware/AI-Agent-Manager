@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from manager.context import AgentContext
+from manager.correction_loop import CorrectionLoop
 from manager.decision import DecisionEngine
 from manager.intention import IntentParser
 from manager.memory import Memory
@@ -18,7 +20,7 @@ class ManagerOrchestrator:
         self.memory = memory or Memory()
 
     def execute(self, request: str, executor: TaskExecutor, agent: str | None = None) -> ManagerReport:
-        """درخواست را تحلیل، تصمیم‌گیری، چندایجنتی برنامه‌ریزی و اجرا می‌کند."""
+        """درخواست را تحلیل، برنامه‌ریزی، اجرا و در صورت نیاز اصلاح می‌کند."""
         intent = self.intent_parser.parse(request)
         decision = self.decision_engine.decide(intent)
         if agent:
@@ -31,11 +33,22 @@ class ManagerOrchestrator:
             "reason": decision.reason,
             "confidence": decision.confidence,
         })
+
         plan = self.multi_agent_planner.plan(intent)
-        self.memory.add("شروع اجرای درخواست", {"request": request, "tasks": len(plan.tasks)})
-        try:
-            executor.run(plan.tasks)
-        except Exception as error:
-            self.memory.add("خطا در اجرای درخواست", str(error))
-        self.memory.add("پایان اجرای درخواست", {"tasks": len(plan.tasks)})
-        return ManagerReport(plan.tasks)
+        correction_loop = CorrectionLoop(executor.loop)
+        completed_tasks = []
+
+        for task in plan.tasks:
+            self.memory.add("شروع Task", {"id": task.id, "agent": task.agent})
+            result_task = correction_loop.run(task)
+            completed_tasks.append(result_task)
+            self.memory.add("پایان Task", {
+                "id": result_task.id,
+                "status": result_task.status.value,
+                "error": result_task.error,
+            })
+            if result_task.status.value == "failed":
+                self.memory.add("توقف زنجیره", result_task.id)
+                break
+
+        return ManagerReport(completed_tasks)
