@@ -1,4 +1,4 @@
-# اجرای خودکار تست‌های پروژه
+# اجرای خودکار آزمون‌های پروژه
 name: آزمون‌های خودکار Manager
 
 on:
@@ -6,6 +6,7 @@ on:
     branches:
       - "**"
   pull_request:
+  workflow_dispatch:
 
 jobs:
   tests:
