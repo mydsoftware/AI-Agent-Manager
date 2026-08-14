@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from agents.registry import create_default_registry
 from manager.executor import TaskExecutor
 from manager.loop import AgenticLoop
 from manager.memory import Memory
@@ -7,13 +8,6 @@ from manager.recovery import ErrorRecovery, RecoveryPolicy
 from manager.router import Router
 from manager.task import Task
 from manager.task_status import TaskStatus
-from agents.registry import create_default_registry
-
-
-class Agent آزمایشی:
-    """ایجنت ساختگی برای آزمایش حلقه اجرا."""
-
-    name = "developer"
 
 
 def test_registry_has_required_agents() -> None:
@@ -40,6 +34,7 @@ def test_retry_policy() -> None:
 
 def test_dependency_order() -> None:
     """وظیفه وابسته باید فقط پس از موفقیت وابستگی اجرا شود."""
+
     class FakeAgent:
         def run(self, task: Task) -> str:
             return task.id
