@@ -6,6 +6,7 @@ from typing import Callable
 
 from agents.code_review_agent import CodeReviewAgent
 from agents.repair_agent import RepairAgent
+from agents.security_agent import SecurityAgent
 from manager.failure_analyzer import FailureAnalysis, FailureAnalyzer
 
 
@@ -17,6 +18,7 @@ class EngineeringState(str, Enum):
     ANALYZE = "analyze"
     REPAIR = "repair"
     REVIEW = "review"
+    SECURITY = "security"
     PR = "pr"
     DONE = "done"
     FAILED = "failed"
@@ -31,20 +33,22 @@ class EngineeringResult:
     failure_analysis: FailureAnalysis | None = None
     repair_plan: dict[str, object] | None = None
     review_approved: bool | None = None
+    security_passed: bool | None = None
 
 
 class EngineeringLoop:
-    """چرخه مهندسی با تحلیل شکست، Repair و Code Review قبل از PR."""
+    """چرخه مهندسی با CI، تحلیل شکست، Repair، Review و Security Gate قبل از PR."""
 
-    def __init__(self, max_attempts: int = 3, failure_analyzer: FailureAnalyzer | None = None, repair_agent: RepairAgent | None = None, code_review_agent: CodeReviewAgent | None = None) -> None:
+    def __init__(self, max_attempts: int = 3, failure_analyzer: FailureAnalyzer | None = None, repair_agent: RepairAgent | None = None, code_review_agent: CodeReviewAgent | None = None, security_agent: SecurityAgent | None = None) -> None:
         if max_attempts < 1:
             raise ValueError("max_attempts باید حداقل ۱ باشد.")
         self.max_attempts = max_attempts
         self.failure_analyzer = failure_analyzer or FailureAnalyzer()
         self.repair_agent = repair_agent or RepairAgent()
         self.code_review_agent = code_review_agent or CodeReviewAgent()
+        self.security_agent = security_agent or SecurityAgent()
 
-    def run(self, create_branch: Callable[[], object], apply_change: Callable[[], object], check_ci: Callable[[], str], repair: Callable[..., object], create_pr: Callable[[], object], get_ci_log: Callable[[], str] | None = None, get_diff: Callable[[], str] | None = None, review_change: Callable[[object], object] | None = None) -> EngineeringResult:
+    def run(self, create_branch: Callable[[], object], apply_change: Callable[[], object], check_ci: Callable[[], str], repair: Callable[..., object], create_pr: Callable[[], object], get_ci_log: Callable[[], str] | None = None, get_diff: Callable[[], str] | None = None, review_change: Callable[[object], object] | None = None, dependency_report: Callable[[], str] | None = None, security_scan: Callable[[str, str | None], object] | None = None) -> EngineeringResult:
         try:
             create_branch()
             apply_change()
@@ -63,11 +67,18 @@ class EngineeringLoop:
                 approved = bool(getattr(review, "approved", False))
                 if not approved:
                     return EngineeringResult(EngineeringState.FAILED, attempt, status, "Code Review تغییرات را تأیید نکرد.", review_approved=False)
+
+                deps = dependency_report() if dependency_report else None
+                security = security_scan(diff, deps) if security_scan else self.security_agent.scan(diff, deps)
+                secure = bool(getattr(security, "passed", False))
+                if not secure:
+                    return EngineeringResult(EngineeringState.FAILED, attempt, status, "Security Gate تغییرات را تأیید نکرد.", review_approved=True, security_passed=False)
+
                 try:
                     create_pr()
                 except Exception as error:
-                    return EngineeringResult(EngineeringState.FAILED, attempt, status, str(error), review_approved=True)
-                return EngineeringResult(EngineeringState.DONE, attempt, status, review_approved=True)
+                    return EngineeringResult(EngineeringState.FAILED, attempt, status, str(error), review_approved=True, security_passed=True)
+                return EngineeringResult(EngineeringState.DONE, attempt, status, review_approved=True, security_passed=True)
 
             if status in {"queued", "in_progress", "pending", "waiting"}:
                 return EngineeringResult(EngineeringState.VERIFY, attempt, status)
