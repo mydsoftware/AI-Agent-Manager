@@ -48,6 +48,20 @@ class EngineeringLoop:
         self.code_review_agent = code_review_agent or CodeReviewAgent()
         self.security_agent = security_agent or SecurityAgent()
 
+    @staticmethod
+    def _invoke_repair(repair: Callable[..., object], plan: dict[str, object], analysis: FailureAnalysis, status: str) -> object:
+        """API قدیمی repair(status) و API جدید repair(plan, analysis) را پشتیبانی می‌کند."""
+        try:
+            return repair(plan, analysis)
+        except TypeError as error:
+            try:
+                return repair(analysis)
+            except TypeError:
+                try:
+                    return repair(status)
+                except TypeError:
+                    raise error
+
     def run(self, create_branch: Callable[[], object], apply_change: Callable[[], object], check_ci: Callable[[], str], repair: Callable[..., object], create_pr: Callable[[], object], get_ci_log: Callable[[], str] | None = None, get_diff: Callable[[], str] | None = None, review_change: Callable[[object], object] | None = None, dependency_report: Callable[[], str] | None = None, security_scan: Callable[[str, str | None], object] | None = None) -> EngineeringResult:
         try:
             create_branch()
@@ -90,9 +104,7 @@ class EngineeringLoop:
                 return EngineeringResult(EngineeringState.FAILED, attempt, status, "تست پس از حداکثر تلاش‌ها موفق نشد.", analysis, plan)
 
             try:
-                repair(plan, analysis)
-            except TypeError:
-                repair(analysis)
+                self._invoke_repair(repair, plan, analysis, status)
             except Exception as error:
                 return EngineeringResult(EngineeringState.FAILED, attempt, status, str(error), analysis, plan)
 
