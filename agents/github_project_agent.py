@@ -17,7 +17,11 @@ class GitHubProjectAgent(BaseAgent):
 
     def run(self, task: Task) -> str:
         """دستورهای پروژه را به عملیات GitHub تبدیل می‌کند."""
-        command = json.loads(task.description)
+        try:
+            command = json.loads(task.description)
+        except json.JSONDecodeError as error:
+            raise ValueError("توضیح پروژه GitHub باید یک JSON معتبر باشد.") from error
+
         operation = command.get("operation")
         repository = command.get("repository")
         if not repository:
@@ -28,7 +32,8 @@ class GitHubProjectAgent(BaseAgent):
             "read_file": {"action": "file", "path": command.get("path"), "ref": command.get("ref")},
             "write_file": {"action": "put_file", "path": command.get("path"), "content": command.get("content"), "message": command.get("message"), "branch": command.get("branch"), "sha": command.get("sha")},
             "create_branch": {"action": "create_branch", "branch": command.get("branch"), "base": command.get("base")},
-            "create_pr": {"action": "create_pr", "head": command.get("head"), "base": command.get("base"), "title": command.get("title"), "body": command.get("body"), "draft": command.get("draft", True)},
+            "create_pr": {"action": "create_pr", "head": command.get("head"), "base": command.get("base"), "title": command.get("title"), "body": command.get("body", ""), "draft": command.get("draft", True)},
+            "workflow_status": {"action": "workflow_runs", "branch": command.get("branch"), "workflow": command.get("workflow")},
         }
         payload = actions.get(operation)
         if payload is None:
@@ -45,6 +50,8 @@ class GitHubProjectAgent(BaseAgent):
             raise ValueError("پارامترهای head، base و title الزامی هستند.")
 
         return self.github.run(Task(
-            id=f"{task.id}:{operation}", agent="github",
+            id=f"{task.id}:{operation}",
+            title=f"عملیات GitHub: {operation}",
+            agent="github",
             description=json.dumps(payload, ensure_ascii=False),
         ))
