@@ -4,6 +4,7 @@ from typing import Dict, Type
 
 from .base_agent import BaseAgent
 from .developer_agent import DeveloperAgent
+from .github_agent import GitHubAgent
 from .qa_agent import QAAgent
 from .research_agent import ResearchAgent
 
@@ -19,7 +20,7 @@ class SpecialistRegistry:
         self._agents[agent_class.name] = agent_class
 
     def get(self, name: str) -> BaseAgent:
-        """یک نمونه از ایجنت موردنظر برمی‌گرداند."""
+        """یک نمونه از ایجنت موردنظر را برمی‌گرداند."""
         if name not in self._agents:
             raise KeyError(f"ایجنت ثبت‌شده‌ای با نام «{name}» وجود ندارد.")
         return self._agents[name]()
@@ -30,9 +31,10 @@ class SpecialistRegistry:
 
 
 def create_default_registry() -> SpecialistRegistry:
-    """Registry اولیه پروژه را ایجاد می‌کند."""
+    """Registry پیش‌فرض پروژه را ایجاد می‌کند."""
     registry = SpecialistRegistry()
     registry.register(ResearchAgent)
     registry.register(DeveloperAgent)
     registry.register(QAAgent)
+    registry.register(GitHubAgent)
     return registry
