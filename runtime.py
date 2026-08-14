@@ -4,6 +4,7 @@ from agents.registry import create_default_registry
 from manager.executor import TaskExecutor
 from manager.loop import AgenticLoop
 from manager.memory import Memory
+from manager.persistent_memory import PersistentMemory
 from manager.planner import Planner
 from manager.report import ManagerReport
 from manager.router import Router
@@ -13,30 +14,36 @@ from manager.task import Task
 class ManagerRuntime:
     """محیط اجرای اصلی مدیر چندایجنتی."""
 
-    def __init__(self) -> None:
+    def __init__(self, database_path: str = "data/manager.db") -> None:
         self.registry = create_default_registry()
         self.router = Router(self.registry)
         self.memory = Memory()
+        self.persistent_memory = PersistentMemory(database_path)
         self.loop = AgenticLoop(self.router, self.memory)
         self.executor = TaskExecutor(self.loop)
         self.planner = Planner()
 
     def run(self, request: str, agent: str = "developer") -> ManagerReport:
-        """درخواست کاربر را برنامه‌ریزی، اجرا و گزارش می‌کند."""
+        """درخواست کاربر را برنامه‌ریزی، اجرا، ثبت و گزارش می‌کند."""
+        self.persistent_memory.add("شروع درخواست", {"request": request, "agent": agent})
         tasks = self.planner.plan(request, agent)
         try:
             self.executor.run(tasks)
-        except Exception:
-            pass
-        return ManagerReport(tasks)
+        except Exception as error:
+            self.persistent_memory.add("خطای درخواست", str(error))
+        report = ManagerReport(tasks)
+        self.persistent_memory.add("پایان درخواست", report.to_dict())
+        return report
 
     def run_tasks(self, tasks: list[Task]) -> ManagerReport:
-        """مجموعه‌ای از وظایف آماده را اجرا و گزارش می‌کند."""
+        """مجموعه‌ای از وظایف آماده را اجرا، ثبت و گزارش می‌کند."""
         try:
             self.executor.run(tasks)
-        except Exception:
-            pass
-        return ManagerReport(tasks)
+        except Exception as error:
+            self.persistent_memory.add("خطای اجرای وظایف", str(error))
+        report = ManagerReport(tasks)
+        self.persistent_memory.add("پایان اجرای وظایف", report.to_dict())
+        return report
 
 
 if __name__ == "__main__":
