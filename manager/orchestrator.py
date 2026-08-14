@@ -8,6 +8,7 @@ from manager.memory import Memory
 from manager.multi_plan import MultiAgentPlanner
 from manager.report import ManagerReport
 from manager.executor import TaskExecutor
+from manager.supervisor import Supervisor, SupervisorAction
 
 
 class ManagerOrchestrator:
@@ -18,9 +19,10 @@ class ManagerOrchestrator:
         self.decision_engine = DecisionEngine()
         self.multi_agent_planner = MultiAgentPlanner()
         self.memory = memory or Memory()
+        self.supervisor = Supervisor()
 
     def execute(self, request: str, executor: TaskExecutor, agent: str | None = None) -> ManagerReport:
-        """درخواست را تحلیل، برنامه‌ریزی، اجرا و در صورت نیاز اصلاح می‌کند."""
+        """درخواست را تحلیل، برنامه‌ریزی، اجرا و با Supervisor کنترل می‌کند."""
         intent = self.intent_parser.parse(request)
         decision = self.decision_engine.decide(intent)
         if agent:
@@ -35,20 +37,26 @@ class ManagerOrchestrator:
         })
 
         plan = self.multi_agent_planner.plan(intent)
-        correction_loop = CorrectionLoop(executor.loop)
+        context = AgentContext()
+        correction_loop = CorrectionLoop(executor.loop, context=context)
         completed_tasks = []
 
         for task in plan.tasks:
             self.memory.add("شروع Task", {"id": task.id, "agent": task.agent})
             result_task = correction_loop.run(task)
             completed_tasks.append(result_task)
+            supervisor_decision = self.supervisor.decide(result_task)
+            self.memory.add("تصمیم Supervisor", {
+                "task": result_task.id,
+                "action": supervisor_decision.action.value,
+                "reason": supervisor_decision.reason,
+            })
             self.memory.add("پایان Task", {
                 "id": result_task.id,
                 "status": result_task.status.value,
                 "error": result_task.error,
             })
-            if result_task.status.value == "failed":
-                self.memory.add("توقف زنجیره", result_task.id)
+            if supervisor_decision.action == SupervisorAction.STOP:
                 break
 
         return ManagerReport(completed_tasks)
