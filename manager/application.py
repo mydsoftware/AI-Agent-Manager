@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from agents.registry import SpecialistRegistry, create_default_registry
 from manager.agent_governance import AgentGovernance
 from manager.executor import TaskExecutor
@@ -21,9 +23,9 @@ class ManagerApplication:
         self.executor = TaskExecutor(self.loop)
 
     def run(self, task: Task) -> str:
-        """ایجنت مناسب را خودکار انتخاب و سپس وظیفه را اجرا می‌کند."""
+        """وظیفه را تحلیل، مسیریابی و با آماده‌سازی لازم اجرا می‌کند."""
         decision = self.intelligent_router.select(task)
-        routed_task = Task(id=task.id, title=task.title, description=task.description, agent=decision.agent)
+        routed_task = self._prepare_task(task, decision.agent, decision.engineering)
         return self.executor.run([routed_task])[0]
 
     def run_many(self, tasks: list[Task]) -> list[str]:
@@ -31,7 +33,7 @@ class ManagerApplication:
         routed = []
         for task in tasks:
             decision = self.intelligent_router.select(task)
-            routed.append(Task(id=task.id, title=task.title, description=task.description, agent=decision.agent, depends_on=task.depends_on))
+            routed.append(self._prepare_task(task, decision.agent, decision.engineering))
         return self.executor.run(routed)
 
     def route(self, task: Task) -> str:
@@ -41,3 +43,23 @@ class ManagerApplication:
     def agents(self) -> list[str]:
         """فهرست ایجنت‌های قابل استفاده Manager را برمی‌گرداند."""
         return self.registry.names()
+
+    def _prepare_task(self, task: Task, agent: str, engineering: bool) -> Task:
+        """برای کارهای GitHub، چرخه مهندسی را در صورت وجود اطلاعات کافی فعال می‌کند."""
+        description = task.description
+        if engineering and agent == "github-project":
+            try:
+                command = json.loads(description)
+            except (TypeError, json.JSONDecodeError):
+                command = None
+            if isinstance(command, dict) and command.get("repository") and command.get("change") and command.get("branch"):
+                command.setdefault("operation", "engineering_loop")
+                description = json.dumps(command, ensure_ascii=False)
+
+        return Task(
+            id=task.id,
+            title=task.title,
+            description=description,
+            agent=agent,
+            depends_on=task.depends_on,
+        )
