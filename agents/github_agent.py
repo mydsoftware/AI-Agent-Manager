@@ -29,30 +29,33 @@ class GitHubAgent(BaseAgent):
 
         if action == "repository":
             result = self.adapter.repository(repository)
-            return json.dumps(result, ensure_ascii=False)
-
-        if action == "file":
+        elif action == "file":
             path = command.get("path")
             if not path:
                 raise ValueError("پارامتر path برای خواندن فایل الزامی است.")
             result = self.adapter.file(repository, path, command.get("ref"))
-            return json.dumps(result, ensure_ascii=False)
-
-        if action == "put_file":
+        elif action == "put_file":
             path = command.get("path")
             content = command.get("content")
             branch = command.get("branch")
             message = command.get("message")
             if not all([path, content is not None, branch, message]):
                 raise ValueError("پارامترهای path، content، branch و message الزامی هستند.")
-            result = self.adapter.put_file(
-                repository,
-                path,
-                content,
-                message,
-                branch,
-                command.get("sha"),
+            result = self.adapter.put_file(repository, path, content, message, branch, command.get("sha"))
+        elif action == "create_branch":
+            if not all([command.get("branch"), command.get("base")]):
+                raise ValueError("پارامترهای branch و base الزامی هستند.")
+            result = self.adapter.create_branch(repository, command["branch"], command["base"])
+        elif action == "create_pr":
+            if not all([command.get("head"), command.get("base"), command.get("title")]):
+                raise ValueError("پارامترهای head، base و title الزامی هستند.")
+            result = self.adapter.create_pull_request(
+                repository, command["head"], command["base"], command["title"],
+                command.get("body", ""), command.get("draft", True),
             )
-            return json.dumps(result, ensure_ascii=False)
+        elif action == "workflow_runs":
+            result = self.adapter.workflow_runs(repository, command.get("branch"), command.get("workflow"))
+        else:
+            raise ValueError(f"عملیات GitHub پشتیبانی نمی‌شود: {action}")
 
-        raise ValueError(f"عملیات GitHub پشتیبانی نمی‌شود: {action}")
+        return json.dumps(result, ensure_ascii=False)
