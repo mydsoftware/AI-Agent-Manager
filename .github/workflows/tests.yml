@@ -1,3 +1,4 @@
+# اجرای خودکار تست‌های پروژه
 name: آزمون‌های خودکار Manager
 
 on:
@@ -16,7 +17,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: نصب ابزار آزمون
-        run: python -m pip install --upgrade pip pytest
+      - name: نصب وابستگی‌ها
+        run: python -m pip install -r requirements.txt
       - name: اجرای آزمون‌ها
         run: python -m pytest -q
