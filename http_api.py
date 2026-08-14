@@ -4,10 +4,13 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from api import execute
+from manager.auth import APIAuthenticator
 
 
 class ManagerRequestHandler(BaseHTTPRequestHandler):
     """درخواست‌های HTTP مربوط به اجرای Manager را مدیریت می‌کند."""
+
+    authenticator = APIAuthenticator()
 
     def _send_json(self, status: int, data: dict) -> None:
         payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -17,10 +20,21 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def do_GET(self) -> None:
+        """نقطه بررسی وضعیت سرویس را ارائه می‌کند."""
+        if self.path == "/health":
+            self._send_json(200, {"status": "فعال"})
+            return
+        self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
+
     def do_POST(self) -> None:
         """درخواست POST برای اجرای Manager را پردازش می‌کند."""
         if self.path != "/execute":
             self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
+            return
+
+        if not self.authenticator.validate(self.headers.get("X-API-Key")):
+            self._send_json(401, {"error": "کلید دسترسی معتبر نیست."})
             return
 
         try:
