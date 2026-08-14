@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from agents.registry import create_default_registry
+from agents.registry_manager import AgentRegistryManager
+from agents.registry_store import AgentRegistryStore
+from manager.agent_governance import AgentGovernance
+from manager.agent_team import AgentTeam
 from manager.executor import TaskExecutor
 from manager.loop import AgenticLoop
 from manager.memory import Memory
@@ -12,11 +16,15 @@ from manager.task import Task
 
 
 class ManagerRuntime:
-    """محیط اجرای اصلی مدیر چندایجنتی."""
+    """محیط اجرای اصلی مدیر چندایجنتی با تیم Agent پایدار."""
 
-    def __init__(self, database_path: str = "data/manager.db") -> None:
+    def __init__(self, database_path: str = "data/manager.db", registry_path: str = "data/agents.json") -> None:
         self.registry = create_default_registry()
-        self.router = Router(self.registry)
+        self.registry_manager = AgentRegistryManager(self.registry)
+        self.registry_store = AgentRegistryStore(registry_path)
+        self.agent_team = AgentTeam(self.registry_manager, self.registry_store)
+        self.governance = AgentGovernance(self.registry_manager)
+        self.router = Router(self.registry, self.governance)
         self.memory = Memory()
         self.persistent_memory = PersistentMemory(database_path)
         self.loop = AgenticLoop(self.router, self.memory)
