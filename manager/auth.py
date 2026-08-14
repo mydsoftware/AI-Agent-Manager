@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
-import secrets
 
 
 class APIAuthenticator:
@@ -17,7 +18,9 @@ class APIAuthenticator:
         return bool(self.api_key)
 
     def validate(self, provided_key: str | None) -> bool:
-        """کلید دریافتی را بدون افشای مقدار واقعی مقایسه می‌کند."""
+        """کلید دریافتی را با مقایسه ثابت‌زمان و پشتیبانی از Unicode بررسی می‌کند."""
         if not self.api_key or not provided_key:
             return False
-        return secrets.compare_digest(self.api_key, provided_key)
+        expected = hashlib.sha256(self.api_key.encode("utf-8")).digest()
+        provided = hashlib.sha256(provided_key.encode("utf-8")).digest()
+        return hmac.compare_digest(expected, provided)
