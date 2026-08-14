@@ -8,7 +8,7 @@ def test_security_gate_blocks_before_pr():
         apply_change=lambda: None,
         check_ci=lambda: "success",
         repair=lambda *args: None,
-        get_diff=lambda: "value = eval(user_input)",
+        get_diff=lambda: "requests.get(url, verify=False)",
         create_pr=lambda: created_pr.append(True),
     )
     assert result.state == EngineeringState.FAILED
