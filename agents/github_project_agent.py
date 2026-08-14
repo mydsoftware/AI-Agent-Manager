@@ -19,42 +19,32 @@ class GitHubProjectAgent(BaseAgent):
         """دستورهای پروژه را به عملیات GitHub تبدیل می‌کند."""
         command = json.loads(task.description)
         operation = command.get("operation")
+        repository = command.get("repository")
+        if not repository:
+            raise ValueError("پارامتر repository الزامی است.")
 
-        if operation == "inspect":
-            return self.github.run(Task(
-                id=f"{task.id}:inspect",
-                agent="github",
-                description=json.dumps({
-                    "action": "repository",
-                    "repository": command["repository"],
-                }, ensure_ascii=False),
-            ))
+        actions = {
+            "inspect": {"action": "repository"},
+            "read_file": {"action": "file", "path": command.get("path"), "ref": command.get("ref")},
+            "write_file": {"action": "put_file", "path": command.get("path"), "content": command.get("content"), "message": command.get("message"), "branch": command.get("branch"), "sha": command.get("sha")},
+            "create_branch": {"action": "create_branch", "branch": command.get("branch"), "base": command.get("base")},
+            "create_pr": {"action": "create_pr", "head": command.get("head"), "base": command.get("base"), "title": command.get("title"), "body": command.get("body"), "draft": command.get("draft", True)},
+        }
+        payload = actions.get(operation)
+        if payload is None:
+            raise ValueError(f"عملیات پروژه GitHub پشتیبانی نمی‌شود: {operation}")
+        payload["repository"] = repository
 
-        if operation == "read_file":
-            return self.github.run(Task(
-                id=f"{task.id}:read",
-                agent="github",
-                description=json.dumps({
-                    "action": "file",
-                    "repository": command["repository"],
-                    "path": command["path"],
-                    "ref": command.get("ref"),
-                }, ensure_ascii=False),
-            ))
+        if operation == "read_file" and not payload["path"]:
+            raise ValueError("پارامتر path الزامی است.")
+        if operation == "write_file" and not all([payload["path"], payload["message"], payload["branch"]]):
+            raise ValueError("پارامترهای path، message و branch الزامی هستند.")
+        if operation == "create_branch" and not all([payload["branch"], payload["base"]]):
+            raise ValueError("پارامترهای branch و base الزامی هستند.")
+        if operation == "create_pr" and not all([payload["head"], payload["base"], payload["title"]]):
+            raise ValueError("پارامترهای head، base و title الزامی هستند.")
 
-        if operation == "write_file":
-            return self.github.run(Task(
-                id=f"{task.id}:write",
-                agent="github",
-                description=json.dumps({
-                    "action": "put_file",
-                    "repository": command["repository"],
-                    "path": command["path"],
-                    "content": command["content"],
-                    "message": command["message"],
-                    "branch": command["branch"],
-                    "sha": command.get("sha"),
-                }, ensure_ascii=False),
-            ))
-
-        raise ValueError(f"عملیات پروژه GitHub پشتیبانی نمی‌شود: {operation}")
+        return self.github.run(Task(
+            id=f"{task.id}:{operation}", agent="github",
+            description=json.dumps(payload, ensure_ascii=False),
+        ))
