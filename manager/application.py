@@ -27,6 +27,8 @@ class ManagerApplication:
         decision = self.intelligent_router.select(task)
         if decision.agent == "developer":
             return self._run_developer_pipeline(task)
+        if decision.agent == "qa":
+            return self._run_qa_pipeline(task)
         routed_task = self._prepare_task(task, decision.agent, decision.engineering)
         return self.executor.run([routed_task])[0]
 
@@ -44,35 +46,47 @@ class ManagerApplication:
 
     def _run_developer_pipeline(self, task: Task) -> str:
         """خروجی Developer را به چرخه اجرایی GitHub تحویل می‌دهد."""
-        developer_task = Task(
-            id=f"{task.id}:developer",
-            title=task.title,
-            description=task.description,
-            agent="developer",
-            depends_on=task.depends_on,
-        )
+        developer_task = Task(id=f"{task.id}:developer", title=task.title, description=task.description, agent="developer", depends_on=task.depends_on)
         plan_raw = self.executor.run([developer_task])[0]
         try:
             plan = json.loads(plan_raw)
         except (TypeError, json.JSONDecodeError):
             return plan_raw
-
         if plan.get("type") != "development_plan" or not plan.get("engineering_loop"):
             return plan_raw
+        command = {
+            "operation": "engineering_loop", "repository": plan["repository"], "branch": plan["branch"],
+            "change": plan.get("change"), "base": plan.get("base", "main"), "workflow": plan.get("workflow"),
+            "repair_change": plan.get("repair_change"), "pr": plan.get("pr", {}),
+        }
+        engineering_task = Task(id=f"{task.id}:engineering", title=f"اجرای مهندسی: {task.title}", description=json.dumps(command, ensure_ascii=False), agent="github-project")
+        return self.executor.run([engineering_task])[0]
 
+    def _run_qa_pipeline(self, task: Task) -> str:
+        """خروجی QA را به چرخه اجرایی GitHub تحویل می‌دهد."""
+        qa_task = Task(id=f"{task.id}:qa", title=task.title, description=task.description, agent="qa", depends_on=task.depends_on)
+        plan_raw = self.executor.run([qa_task])[0]
+        try:
+            plan = json.loads(plan_raw)
+        except (TypeError, json.JSONDecodeError):
+            return plan_raw
+        if plan.get("type") != "qa_plan" or not plan.get("valid") or not plan.get("engineering_loop"):
+            return plan_raw
+
+        change = plan.get("change")
         command = {
             "operation": "engineering_loop",
             "repository": plan["repository"],
             "branch": plan["branch"],
-            "change": plan.get("change"),
             "base": plan.get("base", "main"),
             "workflow": plan.get("workflow"),
+            "change": change,
             "repair_change": plan.get("repair_change"),
             "pr": plan.get("pr", {}),
         }
         engineering_task = Task(
             id=f"{task.id}:engineering",
-            title=f"اجرای مهندسی: {task.title}",
+            title=f"اجرای QA: {task.title}",
             description=json.dumps(command, ensure_ascii=False),
             agent="github-project",
         )
@@ -89,11 +103,4 @@ class ManagerApplication:
             if isinstance(command, dict) and command.get("repository") and command.get("change") and command.get("branch"):
                 command.setdefault("operation", "engineering_loop")
                 description = json.dumps(command, ensure_ascii=False)
-
-        return Task(
-            id=task.id,
-            title=task.title,
-            description=description,
-            agent=agent,
-            depends_on=task.depends_on,
-        )
+        return Task(id=task.id, title=task.title, description=description, agent=agent, depends_on=task.depends_on)
