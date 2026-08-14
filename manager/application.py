@@ -23,18 +23,16 @@ class ManagerApplication:
         self.executor = TaskExecutor(self.loop)
 
     def run(self, task: Task) -> str:
-        """وظیفه را تحلیل، مسیریابی و با آماده‌سازی لازم اجرا می‌کند."""
+        """وظیفه را تحلیل، مسیریابی و در صورت نیاز وارد چرخه مهندسی می‌کند."""
         decision = self.intelligent_router.select(task)
+        if decision.agent == "developer":
+            return self._run_developer_pipeline(task)
         routed_task = self._prepare_task(task, decision.agent, decision.engineering)
         return self.executor.run([routed_task])[0]
 
     def run_many(self, tasks: list[Task]) -> list[str]:
         """چند وظیفه را با انتخاب خودکار ایجنت و رعایت وابستگی‌ها اجرا می‌کند."""
-        routed = []
-        for task in tasks:
-            decision = self.intelligent_router.select(task)
-            routed.append(self._prepare_task(task, decision.agent, decision.engineering))
-        return self.executor.run(routed)
+        return [self.run(task) for task in tasks]
 
     def route(self, task: Task) -> str:
         """بدون اجرا، ایجنت انتخاب‌شده را برمی‌گرداند."""
@@ -43,6 +41,42 @@ class ManagerApplication:
     def agents(self) -> list[str]:
         """فهرست ایجنت‌های قابل استفاده Manager را برمی‌گرداند."""
         return self.registry.names()
+
+    def _run_developer_pipeline(self, task: Task) -> str:
+        """خروجی Developer را به چرخه اجرایی GitHub تحویل می‌دهد."""
+        developer_task = Task(
+            id=f"{task.id}:developer",
+            title=task.title,
+            description=task.description,
+            agent="developer",
+            depends_on=task.depends_on,
+        )
+        plan_raw = self.executor.run([developer_task])[0]
+        try:
+            plan = json.loads(plan_raw)
+        except (TypeError, json.JSONDecodeError):
+            return plan_raw
+
+        if plan.get("type") != "development_plan" or not plan.get("engineering_loop"):
+            return plan_raw
+
+        command = {
+            "operation": "engineering_loop",
+            "repository": plan["repository"],
+            "branch": plan["branch"],
+            "change": plan.get("change"),
+            "base": plan.get("base", "main"),
+            "workflow": plan.get("workflow"),
+            "repair_change": plan.get("repair_change"),
+            "pr": plan.get("pr", {}),
+        }
+        engineering_task = Task(
+            id=f"{task.id}:engineering",
+            title=f"اجرای مهندسی: {task.title}",
+            description=json.dumps(command, ensure_ascii=False),
+            agent="github-project",
+        )
+        return self.executor.run([engineering_task])[0]
 
     def _prepare_task(self, task: Task, agent: str, engineering: bool) -> Task:
         """برای کارهای GitHub، چرخه مهندسی را در صورت وجود اطلاعات کافی فعال می‌کند."""
