@@ -3,12 +3,15 @@ import threading
 import urllib.request
 from http.server import HTTPServer
 
+from manager.api_guard import APIGuard
 from session_api import SessionAPIHandler
 
 
 def test_session_api_start_answer_and_get(tmp_path, monkeypatch):
     from manager.session_runtime import SessionRuntime
     from manager.user_session import UserSessionManager
+
+    monkeypatch.setenv("AI_AGENT_MANAGER_API_KEY", "test-session-key")
 
     class RuntimeStub:
         def run(self, request: str, agent: str = "developer"):
@@ -18,17 +21,19 @@ def test_session_api_start_answer_and_get(tmp_path, monkeypatch):
         sessions=UserSessionManager(str(tmp_path)),
         runtime=RuntimeStub(),
     )
+    SessionAPIHandler.guard = APIGuard()
     server = HTTPServer(("127.0.0.1", 0), SessionAPIHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
+    headers = {"Content-Type": "application/json", "X-API-Key": "test-session-key"}
 
     try:
         def post(path, payload):
             request = urllib.request.Request(
                 base + path,
                 data=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 method="POST",
             )
             with urllib.request.urlopen(request) as response:
@@ -43,7 +48,8 @@ def test_session_api_start_answer_and_get(tmp_path, monkeypatch):
         assert state["status"] == "completed"
         assert state["stage"] == "delivery"
 
-        with urllib.request.urlopen(base + "/session/api-1") as response:
+        request = urllib.request.Request(base + "/session/api-1", headers=headers)
+        with urllib.request.urlopen(request) as response:
             restored = json.loads(response.read())
         assert restored["status"] == "completed"
     finally:
