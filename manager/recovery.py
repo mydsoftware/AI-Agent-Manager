@@ -9,18 +9,16 @@ T = TypeVar("T")
 @dataclass
 class RecoveryPolicy:
     """قوانین تلاش مجدد برای خطاهای قابل بازیابی."""
-
     max_retries: int = 3
 
 
-class ErrorRecovery:
-    """اجرای دوباره یک عملیات پس از خطا تا سقف مجاز."""
+class RecoveryExecutor:
+    """سازگارکننده عمومی برای اجرای مجدد عملیات."""
 
-    def __init__(self, policy: RecoveryPolicy | None = None) -> None:
-        self.policy = policy or RecoveryPolicy()
+    def __init__(self, retries: int = 3) -> None:
+        self.policy = RecoveryPolicy(max_retries=max(0, retries))
 
     def run(self, operation: Callable[[], T]) -> T:
-        """عملیات را اجرا می‌کند و در صورت شکست دوباره تلاش می‌کند."""
         last_error: Exception | None = None
         for _ in range(self.policy.max_retries + 1):
             try:
@@ -30,3 +28,10 @@ class ErrorRecovery:
         if last_error is not None:
             raise last_error
         raise RuntimeError("اجرای عملیات بدون نتیجه پایان یافت.")
+
+
+class ErrorRecovery(RecoveryExecutor):
+    """نام قدیمی API برای سازگاری با نسخه‌های قبلی."""
+
+    def __init__(self, policy: RecoveryPolicy | None = None) -> None:
+        super().__init__(policy.max_retries if policy else 3)
