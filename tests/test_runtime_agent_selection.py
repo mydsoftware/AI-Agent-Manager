@@ -1,16 +1,14 @@
 from manager.orchestrator import ManagerOrchestrator
-from manager.task import Task
 from manager.report import ManagerReport
+from manager.task_status import TaskStatus
 
 
 class ExecutorStub:
-    def __init__(self):
-        self.loop = None
-        self.calls = []
+    class Loop:
+        def run(self, tasks):
+            return [f"done:{task.id}" for task in tasks]
 
-    def run(self, tasks):
-        self.calls.extend(tasks)
-        return tasks
+    loop = Loop()
 
 
 def test_runtime_orchestrator_accepts_explicit_agent_override():
@@ -19,4 +17,4 @@ def test_runtime_orchestrator_accepts_explicit_agent_override():
     assert isinstance(report, ManagerReport)
     assert report.tasks
     assert all(task.agent == "github" for task in report.tasks)
-    assert report.status.value == "success"
+    assert report.status == TaskStatus.SUCCESS
