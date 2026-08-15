@@ -19,8 +19,10 @@ class WordPressBrowserTestAgent:
     """اجرای تست Browser واقعی با Playwright در صورت نصب بودن Chromium/Playwright."""
 
     def run(self, url: str) -> WordPressBrowserTestResult:
-        if not shutil.which("python"):
+        python = shutil.which("python") or shutil.which("python3")
+        if not python:
             return WordPressBrowserTestResult(False, False, (), ("missing:python",))
+
         script = '''from playwright.sync_api import sync_playwright
 import sys
 url = sys.argv[1]
@@ -28,7 +30,7 @@ with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     page = browser.new_page(viewport={"width": 1280, "height": 720})
     page.goto(url, wait_until="networkidle")
-    assert page.title() or page.locator("body").count()
+    assert page.locator("body").count() > 0
     assert page.locator("nav").count() > 0
     assert page.locator("main").count() > 0
     page.screenshot(path="browser-smoke.png", full_page=True)
@@ -38,10 +40,11 @@ with sync_playwright() as p:
             handle.write(script)
             script_path = handle.name
         try:
-            result = subprocess.run(["python", "-m", "playwright", "run", script_path, url], capture_output=True, text=True)
+            result = subprocess.run([python, script_path, url], capture_output=True, text=True)
             if result.returncode == 0:
                 return WordPressBrowserTestResult(True, True, ("page-rendered", "navigation-rendered", "main-rendered"), ())
-            return WordPressBrowserTestResult(False, True, (), ("browser-test-failed", result.stderr[-1000:] or result.stdout[-1000:],))
+            detail = result.stderr[-1000:] or result.stdout[-1000:] or "unknown browser failure"
+            return WordPressBrowserTestResult(False, True, (), ("browser-test-failed", detail))
         except Exception as exc:
             return WordPressBrowserTestResult(False, False, (), (f"browser-test-error:{exc}",))
         finally:
