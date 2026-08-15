@@ -1,0 +1,26 @@
+# اجرای خودکار آزمون‌های پروژه
+name: آزمون‌های خودکار Manager
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: دریافت کد پروژه
+        uses: actions/checkout@v4
+      - name: آماده‌سازی Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: نصب وابستگی‌ها
+        run: python -m pip install -r requirements.txt
+      - name: نصب Chromium برای Playwright
+        run: python -m playwright install --with-deps chromium
+      - name: اجرای آزمون‌ها
+        run: python -m pytest -q
