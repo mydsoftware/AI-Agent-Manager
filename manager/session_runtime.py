@@ -7,7 +7,7 @@ from manager.user_session import UserSessionManager, UserSession
 
 
 class SessionRuntime:
-    """مرز اجرای درخواست کاربر، شفاف‌سازی و تحویل خروجی نهایی."""
+    """مرز اجرای درخواست کاربر، شفاف‌سازی، ادامه Session و تحویل خروجی."""
 
     def __init__(self, sessions: UserSessionManager | None = None, runtime: Any | None = None) -> None:
         self.sessions = sessions or UserSessionManager()
@@ -34,10 +34,21 @@ class SessionRuntime:
             return self.sessions.update(session)
         return self._execute(session)
 
+    def resume(self, session_id: str) -> UserSession:
+        session = self.sessions.load(session_id)
+        if session.status == "waiting_for_user":
+            return session
+        if session.status == "completed":
+            return session
+        return self._execute(session)
+
     def answer(self, session_id: str, answer: str) -> UserSession:
         session = self.sessions.load(session_id)
         if session.status != "waiting_for_user":
             raise RuntimeError("این Session منتظر پاسخ کاربر نیست.")
+        answer = answer.strip()
+        if not answer:
+            raise ValueError("پاسخ کاربر نمی‌تواند خالی باشد.")
         session.answers.append(answer)
         session.request = f"{session.request}\nاطلاعات تکمیلی کاربر: {answer}"
         session.question = None
