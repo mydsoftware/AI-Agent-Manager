@@ -53,3 +53,31 @@ def test_session_output_is_json_serializable_and_persistent(tmp_path):
     assert isinstance(persisted.output, dict)
     assert persisted.output["agent"] == "github"
     assert persisted.output["report"]["status"] == "completed"
+
+
+def test_resume_completed_session_is_idempotent(tmp_path):
+    sessions = UserSessionManager(str(tmp_path))
+    runtime = ReportRuntime()
+    flow = SessionRuntime(sessions=sessions, runtime=runtime)
+
+    first = flow.start("resume-1", "یک پروژه کامل برای گیتهاب بساز")
+    second = flow.resume("resume-1")
+
+    assert first.status == "completed"
+    assert second.status == "completed"
+    assert second.output == first.output
+    assert len(runtime.calls) == 1
+
+
+def test_resume_waiting_session_does_not_execute(tmp_path):
+    sessions = UserSessionManager(str(tmp_path))
+    runtime = ReportRuntime()
+    flow = SessionRuntime(sessions=sessions, runtime=runtime)
+
+    state = flow.start("resume-2", "یک سایت بساز")
+    resumed = flow.resume("resume-2")
+
+    assert state.status == "waiting_for_user"
+    assert resumed.status == "waiting_for_user"
+    assert resumed.question
+    assert runtime.calls == []
