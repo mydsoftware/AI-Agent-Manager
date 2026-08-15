@@ -22,8 +22,10 @@ jobs:
       - name: نصب وابستگی‌ها
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
+          pip install -r requirements.txt
+
+      - name: نصب Chromium برای Playwright
+        run: python -m playwright install --with-deps chromium
 
       - name: اجرای همه آزمون‌ها
         run: pytest -q
