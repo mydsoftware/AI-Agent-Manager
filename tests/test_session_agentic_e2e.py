@@ -57,3 +57,8 @@ def test_session_uses_real_manager_runtime(tmp_path):
     assert state.output.successful == state.output.total
     assert state.output.failed == 0
     assert state.output.blocked == 0
+
+    persisted = sessions.load("real-runtime-1")
+    assert persisted.status == "completed"
+    assert persisted.stage == "delivery"
+    assert "success" in str(persisted.output)
