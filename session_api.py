@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 
 from manager.api_guard import APIGuard
+from manager.auth import APIAuthenticator
 from manager.session_runtime import SessionRuntime
 
 
@@ -24,7 +25,9 @@ class SessionAPIHandler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
     def authorized(self) -> bool:
-        return self.guard.authorized(self.headers.get("X-API-Key"))
+        # Resolve the environment at request time so tests and process managers
+        # can inject the secret after module import without restarting the API.
+        return APIGuard(APIAuthenticator()).authorized(self.headers.get("X-API-Key"))
 
     @staticmethod
     def state(state) -> dict:
