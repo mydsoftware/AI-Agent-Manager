@@ -36,3 +36,24 @@ def test_complete_request_goes_directly_to_runtime(tmp_path):
     assert state.status == "completed"
     assert state.stage == "delivery"
     assert len(runtime.calls) == 1
+
+
+def test_session_uses_real_manager_runtime(tmp_path):
+    from runtime import ManagerRuntime
+
+    sessions = UserSessionManager(str(tmp_path / "sessions"))
+    runtime = ManagerRuntime(
+        database_path=str(tmp_path / "manager.db"),
+        registry_path=str(tmp_path / "agents.json"),
+    )
+    flow = SessionRuntime(sessions=sessions, runtime=runtime)
+
+    state = flow.start("real-runtime-1", "یک برنامه ساده برای مدیریت پروژه بساز")
+
+    assert state.status == "completed"
+    assert state.stage == "delivery"
+    assert state.output is not None
+    assert state.output.status.value == "success"
+    assert state.output.successful == state.output.total
+    assert state.output.failed == 0
+    assert state.output.blocked == 0
