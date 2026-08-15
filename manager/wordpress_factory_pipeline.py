@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+import zipfile
 
 from agents.wordpress_factory_agent import WordPressFactoryAgent
 from agents.wordpress_requirements_agent import WordPressRequirementsAgent
@@ -32,13 +34,21 @@ class WordPressFactoryPipeline:
         self.plugin_builder = WordPressPluginBuilder()
         self.quality = WordPressQualityLoop(max_quality_attempts)
 
+    def _package(self, root: Path, zip_path: Path) -> None:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in root.rglob("*"):
+                if path.is_file():
+                    archive.write(path, path.relative_to(root.parent))
+
     def run(self, request: str, output_dir: str) -> WordPressFactoryResult:
         requirements = self.requirements.analyze(request)
         plan = self.factory.plan(request)
         build = self.builder.execute(plan, output_dir)
         self.theme_builder.build(requirements, build.root)
-        plugins = self.plugin_builder.build(requirements, f"{build.root.parent / 'plugins'}")
+        plugins = self.plugin_builder.build(requirements, str(Path(build.root) / "wp-content" / "plugins"))
         quality = self.quality.run(build.root)
+        if quality.passed:
+            self._package(Path(build.root), Path(build.zip_path))
         return WordPressFactoryResult(
             quality.passed,
             plan,
