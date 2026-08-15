@@ -4,19 +4,20 @@ from flask import Flask, jsonify, request
 
 from api.agent_team_api import AgentTeamAPI
 from api.session_api import create_session_blueprint
-from manager.user_session_manager import UserSessionManager
+from manager.session_runtime import SessionRuntime
 from runtime import ManagerRuntime
 
 
 def create_app(
     team_api: AgentTeamAPI,
     runtime: ManagerRuntime | None = None,
-    session_manager: UserSessionManager | None = None,
+    session_runtime: SessionRuntime | None = None,
 ) -> Flask:
-    """برنامه HTTP مدیریتی، اجرای درخواست و Session کاربر را می‌سازد."""
+    """برنامه HTTP مدیریتی و مسیر واقعی Session کاربر را می‌سازد."""
     app = Flask(__name__)
     manager_runtime = runtime or ManagerRuntime()
-    app.register_blueprint(create_session_blueprint(session_manager))
+    user_runtime = session_runtime or SessionRuntime(runtime=manager_runtime)
+    app.register_blueprint(create_session_blueprint(user_runtime))
 
     @app.get("/api/agents")
     def list_agents():
