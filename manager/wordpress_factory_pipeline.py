@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from agents.wordpress_factory_agent import WordPressFactoryAgent
 from agents.wordpress_requirements_agent import WordPressRequirementsAgent
 from agents.wordpress_theme_builder import WordPressThemeBuilder
+from agents.wordpress_plugin_builder import WordPressPluginBuilder
 from manager.wordpress_build_executor import WordPressBuildExecutor, WordPressBuildResult
 from manager.wordpress_quality_loop import WordPressQualityLoop
 
@@ -17,16 +18,18 @@ class WordPressFactoryResult:
     build: WordPressBuildResult
     quality_attempts: int
     findings: tuple[str, ...]
+    plugins_created: tuple[str, ...]
 
 
 class WordPressFactoryPipeline:
-    """Request → Requirements → Plan → Build → Theme Build → Quality/Repair → ZIP."""
+    """Request → Requirements → Plan → Theme/Plugin Build → Quality/Repair → ZIP."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
         self.factory = WordPressFactoryAgent()
         self.builder = WordPressBuildExecutor()
         self.theme_builder = WordPressThemeBuilder()
+        self.plugin_builder = WordPressPluginBuilder()
         self.quality = WordPressQualityLoop(max_quality_attempts)
 
     def run(self, request: str, output_dir: str) -> WordPressFactoryResult:
@@ -34,6 +37,7 @@ class WordPressFactoryPipeline:
         plan = self.factory.plan(request)
         build = self.builder.execute(plan, output_dir)
         self.theme_builder.build(requirements, build.root)
+        plugins = self.plugin_builder.build(requirements, f"{build.root.parent / 'plugins'}")
         quality = self.quality.run(build.root)
         return WordPressFactoryResult(
             quality.passed,
@@ -42,4 +46,5 @@ class WordPressFactoryPipeline:
             build,
             quality.attempts,
             quality.quality.findings,
+            plugins,
         )
