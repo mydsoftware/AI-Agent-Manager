@@ -34,10 +34,7 @@ class WordPressThemeBuilder:
         created.append(str(footer))
 
         for page in requirements.pages:
-            if page.slug == "home":
-                filename = "front-page.php"
-            else:
-                filename = f"page-{page.slug}.php"
+            filename = "front-page.php" if page.slug == "home" else f"page-{page.slug}.php"
             page_sections = "".join(
                 f'<section class="section-{section}"><h2>{section.replace("-", " ").title()}</h2></section>\n'
                 for section in page.sections
@@ -57,7 +54,7 @@ class WordPressThemeBuilder:
         index.write_text(
             "<!doctype html>\n"
             "<html lang=\"fa\"><head><meta charset=\"UTF-8\">\n"
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0">\n"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
             f"<title>{home_page.title}</title></head><body>\n"
             "<nav aria-label=\"Primary navigation\"><a href=\"#primary\">خانه</a></nav>\n"
             f"<main id=\"primary\"><h1>{home_page.title}</h1>\n{sections}</main>\n"
