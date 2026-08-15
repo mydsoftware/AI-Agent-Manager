@@ -13,6 +13,7 @@ from agents.wordpress_delivery_agent import WordPressDeliveryAgent, WordPressDel
 from agents.wordpress_installer_agent import WordPressInstallerAgent, WordPressInstallerResult
 from agents.wordpress_smoke_test_agent import WordPressSmokeTestAgent, WordPressSmokeTestResult
 from agents.wordpress_ui_test_agent import WordPressUITestAgent, WordPressUITestResult
+from agents.wordpress_browser_test_agent import WordPressBrowserTestAgent, WordPressBrowserTestResult
 from manager.wordpress_build_executor import WordPressBuildExecutor, WordPressBuildResult
 from manager.wordpress_quality_loop import WordPressQualityLoop
 
@@ -29,12 +30,13 @@ class WordPressFactoryResult:
     package: PackageValidationResult
     smoke_test: WordPressSmokeTestResult
     ui_test: WordPressUITestResult
+    browser_test: WordPressBrowserTestResult
     delivery: WordPressDeliveryResult | None
     installer: WordPressInstallerResult | None
 
 
 class WordPressFactoryPipeline:
-    """Request → Requirements → Build → QA/Repair → Package → Validation → Smoke/UI → Delivery → Installer."""
+    """Request → Build → QA → Package → Smoke/UI → optional live Browser → Delivery."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
@@ -46,6 +48,7 @@ class WordPressFactoryPipeline:
         self.package_validator = WordPressPackageValidator()
         self.smoke_test_agent = WordPressSmokeTestAgent()
         self.ui_test_agent = WordPressUITestAgent()
+        self.browser_test_agent = WordPressBrowserTestAgent()
         self.delivery_agent = WordPressDeliveryAgent()
         self.installer_agent = WordPressInstallerAgent()
 
@@ -56,7 +59,7 @@ class WordPressFactoryPipeline:
                 if path.is_file():
                     archive.write(path, path.relative_to(root.parent))
 
-    def run(self, request: str, output_dir: str) -> WordPressFactoryResult:
+    def run(self, request: str, output_dir: str, browser_url: str | None = None) -> WordPressFactoryResult:
         requirements = self.requirements.analyze(request)
         plan = self.factory.plan(request)
         build = self.builder.execute(plan, output_dir)
@@ -67,6 +70,7 @@ class WordPressFactoryPipeline:
         package = PackageValidationResult(False, ("not-built",), ())
         smoke_test = WordPressSmokeTestResult(False, (), ("not-built",))
         ui_test = WordPressUITestResult(False, (), ("not-built",))
+        browser_test = WordPressBrowserTestResult(True, False, ("skipped:no-browser-url",), ())
         delivery = None
         installer = None
         if quality.passed:
@@ -76,18 +80,20 @@ class WordPressFactoryPipeline:
                 smoke_test = self.smoke_test_agent.run(build.zip_path)
                 if smoke_test.passed:
                     ui_test = self.ui_test_agent.run(build.zip_path)
-                if smoke_test.passed and ui_test.passed:
+                if smoke_test.passed and ui_test.passed and browser_url:
+                    browser_test = self.browser_test_agent.run(browser_url)
+                if smoke_test.passed and ui_test.passed and browser_test.passed:
                     delivery_dir = Path(output_dir) / "delivery"
                     delivery = self.delivery_agent.deliver(build.zip_path, package, requirements.site_title, str(delivery_dir))
                     installer = self.installer_agent.prepare(build.zip_path, str(delivery_dir))
 
         passed = (
             quality.passed and package.passed and smoke_test.passed and ui_test.passed
-            and delivery is not None and delivery.delivered
+            and browser_test.passed and delivery is not None and delivery.delivered
             and installer is not None and installer.prepared
         )
-        findings = quality.quality.findings + package.findings + smoke_test.findings + ui_test.findings
+        findings = quality.quality.findings + package.findings + smoke_test.findings + ui_test.findings + browser_test.findings
         return WordPressFactoryResult(
             passed, plan, requirements, build, quality.attempts, findings,
-            plugins, package, smoke_test, ui_test, delivery, installer,
+            plugins, package, smoke_test, ui_test, browser_test, delivery, installer,
         )
