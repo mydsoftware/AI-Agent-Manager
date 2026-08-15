@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import json
+from typing import Any
 
 
 @dataclass
@@ -13,6 +14,7 @@ class UserSession:
     stage: str = "requirements"
     question: str | None = None
     answers: list[str] | None = None
+    output: Any = None
 
     def __post_init__(self) -> None:
         if self.answers is None:
@@ -32,7 +34,7 @@ class UserSessionManager:
 
     def save(self, session: UserSession) -> UserSession:
         self._path(session.session_id).write_text(
-            json.dumps(asdict(session), ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(asdict(session), ensure_ascii=False, indent=2, default=str), encoding="utf-8"
         )
         return session
 
