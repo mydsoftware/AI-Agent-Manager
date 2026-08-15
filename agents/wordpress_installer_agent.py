@@ -19,10 +19,8 @@ class WordPressInstallerAgent:
         source = Path(package_path)
         if not source.exists():
             raise FileNotFoundError(package_path)
-
         target = Path(output_dir)
         target.mkdir(parents=True, exist_ok=True)
-
         script = target / "install-wordpress.sh"
         script.write_text(
             "#!/usr/bin/env bash\nset -euo pipefail\n\n"
@@ -31,7 +29,6 @@ class WordPressInstallerAgent:
             "echo \"Upload the package through WordPress Admin or your deployment system.\"\n",
             encoding="utf-8",
         )
-
         instructions = target / "installation.json"
         instructions.write_text(json.dumps({
             "package": source.name,
@@ -43,5 +40,4 @@ class WordPressInstallerAgent:
                 "Run the final WordPress smoke tests.",
             ],
         }, ensure_ascii=False, indent=2), encoding="utf-8")
-
         return WordPressInstallerResult(True, str(script), str(instructions))
