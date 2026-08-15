@@ -6,6 +6,7 @@ import zipfile
 
 from agents.wordpress_factory_agent import WordPressFactoryAgent
 from agents.wordpress_requirements_agent import WordPressRequirementsAgent
+from agents.wordpress_clarification_agent import WordPressClarificationAgent, WordPressClarificationResult
 from agents.wordpress_theme_builder import WordPressThemeBuilder
 from agents.wordpress_plugin_builder import WordPressPluginBuilder
 from agents.wordpress_package_validator import WordPressPackageValidator, PackageValidationResult
@@ -25,9 +26,9 @@ from manager.wordpress_quality_loop import WordPressQualityLoop
 @dataclass(frozen=True)
 class WordPressFactoryResult:
     passed: bool
-    plan: object
-    requirements: object
-    build: WordPressBuildResult
+    plan: object | None
+    requirements: object | None
+    build: WordPressBuildResult | None
     quality_attempts: int
     findings: tuple[str, ...]
     plugins_created: tuple[str, ...]
@@ -40,13 +41,15 @@ class WordPressFactoryResult:
     requirement_compliance: WordPressRequirementComplianceResult
     delivery: WordPressDeliveryResult | None
     installer: WordPressInstallerResult | None
+    clarification: WordPressClarificationResult | None = None
 
 
 class WordPressFactoryPipeline:
-    """Request → Build → QA → Package → Smoke/UI → Browser → Security/Performance/Compliance → Delivery."""
+    """Autonomous WordPress factory: execute everything unless clarification is genuinely required."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
+        self.clarification_agent = WordPressClarificationAgent()
         self.factory = WordPressFactoryAgent()
         self.builder = WordPressBuildExecutor()
         self.theme_builder = WordPressThemeBuilder()
@@ -71,6 +74,22 @@ class WordPressFactoryPipeline:
                     archive.write(path, path.relative_to(root.parent))
 
     def run(self, request: str, output_dir: str, browser_url: str | None = None) -> WordPressFactoryResult:
+        clarification = self.clarification_agent.analyze(request)
+        if clarification.needs_clarification:
+            empty_package = PackageValidationResult(False, (), ("awaiting:clarification",))
+            empty_smoke = WordPressSmokeTestResult(False, (), ("awaiting:clarification",))
+            empty_ui = WordPressUITestResult(False, (), ("awaiting:clarification",))
+            empty_browser = WordPressBrowserTestResult(False, False, (), ("awaiting:clarification",))
+            empty_security = WordPressSecurityTestResult(False, (), ("awaiting:clarification",))
+            empty_performance = WordPressPerformanceTestResult(False, (), ("awaiting:clarification",), {})
+            empty_compliance = WordPressRequirementComplianceResult(False, (), ("awaiting:clarification",))
+            return WordPressFactoryResult(
+                False, None, None, None, 0,
+                ("awaiting:clarification",), (), empty_package, empty_smoke, empty_ui,
+                empty_browser, empty_security, empty_performance, empty_compliance,
+                None, None, clarification,
+            )
+
         requirements = self.requirements.analyze(request)
         plan = self.factory.plan(request)
         build = self.builder.execute(plan, output_dir)
@@ -96,10 +115,7 @@ class WordPressFactoryPipeline:
                 if smoke_test.passed:
                     ui_test = self.ui_test_agent.run(build.zip_path)
                 if smoke_test.passed and ui_test.passed:
-                    if browser_url:
-                        browser_test = self.browser_test_agent.run(browser_url)
-                    else:
-                        browser_test = self.runtime_browser_runner.run(build.root).browser
+                    browser_test = self.browser_test_agent.run(browser_url) if browser_url else self.runtime_browser_runner.run(build.root).browser
                 if smoke_test.passed and ui_test.passed and browser_test.passed:
                     security_test = self.security_test_agent.run(build.zip_path)
                     performance_test = self.performance_test_agent.run(build.zip_path)
@@ -126,5 +142,5 @@ class WordPressFactoryPipeline:
         return WordPressFactoryResult(
             passed, plan, requirements, build, quality.attempts, findings,
             plugins, package, smoke_test, ui_test, browser_test, security_test,
-            performance_test, requirement_compliance, delivery, installer,
+            performance_test, requirement_compliance, delivery, installer, clarification,
         )
