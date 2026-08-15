@@ -71,4 +71,15 @@ class WordPressFactoryPipeline:
 
         passed = quality.passed and package.passed and delivery is not None and delivery.delivered and installer is not None and installer.prepared
         findings = quality.quality.findings + package.findings
-        return WordPressFactoryResult(quality.passed and package.passed and delivery is not None and delivery.delivered, plan, requirements, build, quality.attempts, findings, plugins, package, delivery, installer)
+        return WordPressFactoryResult(
+            passed,
+            plan,
+            requirements,
+            build,
+            quality.attempts,
+            findings,
+            plugins,
+            package,
+            delivery,
+            installer,
+        )
