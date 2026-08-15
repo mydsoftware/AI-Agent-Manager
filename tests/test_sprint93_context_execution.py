@@ -42,4 +42,4 @@ def test_context_aware_executor_detects_unresolvable_dependency():
         executor.run(tasks)
         assert False, "expected dependency failure"
     except RuntimeError as error:
-        assert "وابستگی قابل حل نیست" in str(error)
+        assert "وابستگی‌های تعریف‌نشده" in str(error)
