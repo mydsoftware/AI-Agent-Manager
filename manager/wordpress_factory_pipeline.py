@@ -11,6 +11,7 @@ from agents.wordpress_plugin_builder import WordPressPluginBuilder
 from agents.wordpress_package_validator import WordPressPackageValidator, PackageValidationResult
 from agents.wordpress_delivery_agent import WordPressDeliveryAgent, WordPressDeliveryResult
 from agents.wordpress_installer_agent import WordPressInstallerAgent, WordPressInstallerResult
+from agents.wordpress_smoke_test_agent import WordPressSmokeTestAgent, WordPressSmokeTestResult
 from manager.wordpress_build_executor import WordPressBuildExecutor, WordPressBuildResult
 from manager.wordpress_quality_loop import WordPressQualityLoop
 
@@ -25,12 +26,13 @@ class WordPressFactoryResult:
     findings: tuple[str, ...]
     plugins_created: tuple[str, ...]
     package: PackageValidationResult
+    smoke_test: WordPressSmokeTestResult
     delivery: WordPressDeliveryResult | None
     installer: WordPressInstallerResult | None
 
 
 class WordPressFactoryPipeline:
-    """Request → Requirements → Build → QA/Repair → Package → Validation → Delivery → Installer."""
+    """Request → Requirements → Build → QA/Repair → Package → Validation → Smoke Test → Delivery → Installer."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
@@ -40,6 +42,7 @@ class WordPressFactoryPipeline:
         self.plugin_builder = WordPressPluginBuilder()
         self.quality = WordPressQualityLoop(max_quality_attempts)
         self.package_validator = WordPressPackageValidator()
+        self.smoke_test_agent = WordPressSmokeTestAgent()
         self.delivery_agent = WordPressDeliveryAgent()
         self.installer_agent = WordPressInstallerAgent()
 
@@ -59,18 +62,29 @@ class WordPressFactoryPipeline:
 
         quality = self.quality.run(build.root)
         package = PackageValidationResult(False, ("not-built",), ())
+        smoke_test = WordPressSmokeTestResult(False, (), ("not-built",))
         delivery = None
         installer = None
         if quality.passed:
             self._package(Path(build.root), Path(build.zip_path))
             package = self.package_validator.validate(build.zip_path)
             if package.passed:
-                delivery_dir = Path(output_dir) / "delivery"
-                delivery = self.delivery_agent.deliver(build.zip_path, package, requirements.site_title, str(delivery_dir))
-                installer = self.installer_agent.prepare(build.zip_path, str(delivery_dir))
+                smoke_test = self.smoke_test_agent.run(build.zip_path)
+                if smoke_test.passed:
+                    delivery_dir = Path(output_dir) / "delivery"
+                    delivery = self.delivery_agent.deliver(build.zip_path, package, requirements.site_title, str(delivery_dir))
+                    installer = self.installer_agent.prepare(build.zip_path, str(delivery_dir))
 
-        passed = quality.passed and package.passed and delivery is not None and delivery.delivered and installer is not None and installer.prepared
-        findings = quality.quality.findings + package.findings
+        passed = (
+            quality.passed
+            and package.passed
+            and smoke_test.passed
+            and delivery is not None
+            and delivery.delivered
+            and installer is not None
+            and installer.prepared
+        )
+        findings = quality.quality.findings + package.findings + smoke_test.findings
         return WordPressFactoryResult(
             passed,
             plan,
@@ -80,6 +94,7 @@ class WordPressFactoryPipeline:
             findings,
             plugins,
             package,
+            smoke_test,
             delivery,
             installer,
         )
