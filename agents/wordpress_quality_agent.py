@@ -12,7 +12,7 @@ class WordPressQualityResult:
 
 
 class WordPressQualityAgent:
-    """خروجی واقعی WordPress را قبل از تحویل اعتبارسنجی می‌کند."""
+    """اعتبارسنجی ساختار Theme و Plugin خروجی WordPress قبل از تحویل."""
 
     def validate(self, root: str) -> WordPressQualityResult:
         base = Path(root)
@@ -22,12 +22,24 @@ class WordPressQualityAgent:
             if not (base / name).exists():
                 findings.append(f"missing:{name}")
 
+        if (base / "style.css").exists():
+            css = (base / "style.css").read_text(encoding="utf-8", errors="replace")
+            if not re.search(r"Theme Name\s*:", css, re.I):
+                findings.append("theme-header:style.css")
+
         php_files = list(base.rglob("*.php")) if base.exists() else []
         for path in php_files:
             text = path.read_text(encoding="utf-8", errors="replace")
             if not re.search(r"<\?php", text):
-                findings.append(f"php-header:{path.name}")
-            if "eval(" in text or "exec(" in text:
-                findings.append(f"unsafe-code:{path.name}")
+                findings.append(f"php-header:{path.relative_to(base)}")
+            if re.search(r"\b(eval|exec|shell_exec|system|passthru)\s*\(", text):
+                findings.append(f"unsafe-code:{path.relative_to(base)}")
+
+        plugin_root = base / "wp-content" / "plugins"
+        if plugin_root.exists():
+            for plugin_file in plugin_root.rglob("*.php"):
+                text = plugin_file.read_text(encoding="utf-8", errors="replace")
+                if not re.search(r"Plugin Name\s*:", text, re.I):
+                    findings.append(f"plugin-header:{plugin_file.relative_to(base)}")
 
         return WordPressQualityResult(not findings, tuple(findings))
