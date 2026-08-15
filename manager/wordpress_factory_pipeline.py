@@ -14,6 +14,7 @@ from agents.wordpress_installer_agent import WordPressInstallerAgent, WordPressI
 from agents.wordpress_smoke_test_agent import WordPressSmokeTestAgent, WordPressSmokeTestResult
 from agents.wordpress_ui_test_agent import WordPressUITestAgent, WordPressUITestResult
 from agents.wordpress_browser_test_agent import WordPressBrowserTestAgent, WordPressBrowserTestResult
+from agents.wordpress_runtime_browser_runner import WordPressRuntimeBrowserRunner
 from manager.wordpress_build_executor import WordPressBuildExecutor, WordPressBuildResult
 from manager.wordpress_quality_loop import WordPressQualityLoop
 
@@ -36,7 +37,7 @@ class WordPressFactoryResult:
 
 
 class WordPressFactoryPipeline:
-    """Request → Build → QA → Package → Smoke/UI → optional live Browser → Delivery."""
+    """Request → Build → QA → Package → Smoke/UI → Local/Live Browser → Delivery."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
@@ -49,6 +50,7 @@ class WordPressFactoryPipeline:
         self.smoke_test_agent = WordPressSmokeTestAgent()
         self.ui_test_agent = WordPressUITestAgent()
         self.browser_test_agent = WordPressBrowserTestAgent()
+        self.runtime_browser_runner = WordPressRuntimeBrowserRunner()
         self.delivery_agent = WordPressDeliveryAgent()
         self.installer_agent = WordPressInstallerAgent()
 
@@ -70,7 +72,7 @@ class WordPressFactoryPipeline:
         package = PackageValidationResult(False, ("not-built",), ())
         smoke_test = WordPressSmokeTestResult(False, (), ("not-built",))
         ui_test = WordPressUITestResult(False, (), ("not-built",))
-        browser_test = WordPressBrowserTestResult(True, False, ("skipped:no-browser-url",), ())
+        browser_test = WordPressBrowserTestResult(False, False, (), ("not-built",))
         delivery = None
         installer = None
         if quality.passed:
@@ -80,8 +82,11 @@ class WordPressFactoryPipeline:
                 smoke_test = self.smoke_test_agent.run(build.zip_path)
                 if smoke_test.passed:
                     ui_test = self.ui_test_agent.run(build.zip_path)
-                if smoke_test.passed and ui_test.passed and browser_url:
-                    browser_test = self.browser_test_agent.run(browser_url)
+                if smoke_test.passed and ui_test.passed:
+                    if browser_url:
+                        browser_test = self.browser_test_agent.run(browser_url)
+                    else:
+                        browser_test = self.runtime_browser_runner.run(build.root).browser
                 if smoke_test.passed and ui_test.passed and browser_test.passed:
                     delivery_dir = Path(output_dir) / "delivery"
                     delivery = self.delivery_agent.deliver(build.zip_path, package, requirements.site_title, str(delivery_dir))
