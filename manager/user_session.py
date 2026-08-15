@@ -9,6 +9,7 @@ from typing import Any
 @dataclass(frozen=True)
 class UserSessionResult:
     session_id: str
+    request: str
     status: str
     stage: str
     question: str | None
@@ -62,7 +63,7 @@ class UserSessionManager:
         return self._result(self._load(session_id))
 
     def _path(self, session_id: str) -> Path:
-        safe = "".join(ch for ch in session_id if ch.isalnum() or ch in "-_" )
+        safe = "".join(ch for ch in session_id if ch.isalnum() or ch in "-_")
         if not safe:
             raise ValueError("session_id معتبر نیست.")
         return self.root / f"{safe}.json"
@@ -80,6 +81,7 @@ class UserSessionManager:
     @staticmethod
     def _result(session: dict[str, Any]) -> UserSessionResult:
         return UserSessionResult(
-            session_id=session["session_id"], status=session["status"], stage=session["stage"],
-            question=session.get("question"), context=session.get("context", {}), output=session.get("output"),
+            session_id=session["session_id"], request=session["request"], status=session["status"],
+            stage=session["stage"], question=session.get("question"),
+            context=session.get("context", {}), output=session.get("output"),
         )
