@@ -1,5 +1,3 @@
-import pytest
-
 from manager.context_loop import ContextAwareExecutor
 from manager.task import Task
 
@@ -16,18 +14,21 @@ class LoopStub:
 def test_executor_rejects_missing_dependency():
     loop = LoopStub()
     executor = ContextAwareExecutor(loop)
-    tasks = [Task(id="build", description="ساخت", depends_on=["missing"])]
+    tasks = [Task("build", "ساخت", "ساخت", "developer", depends_on=["missing"])]
 
-    with pytest.raises(RuntimeError, match="وابستگی‌های تعریف‌نشده"):
+    try:
         executor.run(tasks)
+        assert False, "expected dependency failure"
+    except RuntimeError as error:
+        assert "وابستگی‌های تعریف‌نشده" in str(error)
 
 
 def test_executor_executes_dependency_chain_in_order():
     loop = LoopStub()
     executor = ContextAwareExecutor(loop)
     tasks = [
-        Task(id="deploy", description="استقرار", depends_on=["build"]),
-        Task(id="build", description="ساخت", depends_on=[]),
+        Task("deploy", "استقرار", "استقرار", "developer", depends_on=["build"]),
+        Task("build", "ساخت", "ساخت", "developer", depends_on=[]),
     ]
 
     results = executor.run(tasks)
