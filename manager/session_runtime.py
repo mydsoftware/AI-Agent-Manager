@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import Any
+from manager.decision import DecisionEngine
+from manager.intention import IntentParser
 from manager.user_session import UserSessionManager, UserSession
 
 
@@ -13,6 +15,8 @@ class SessionRuntime:
             from runtime import ManagerRuntime
             runtime = ManagerRuntime()
         self.runtime = runtime
+        self.intent_parser = IntentParser()
+        self.decision_engine = DecisionEngine(getattr(runtime, "governance", None))
 
     @staticmethod
     def _needs_clarification(request: str) -> bool:
@@ -25,6 +29,7 @@ class SessionRuntime:
         session = self.sessions.create(session_id, request)
         if self._needs_clarification(request):
             session.status = "waiting_for_user"
+            session.stage = "clarification"
             session.question = "لطفاً هدف یا نوع دقیق پروژه را مشخص کنید."
             return self.sessions.update(session)
         return self._execute(session)
@@ -42,7 +47,17 @@ class SessionRuntime:
         session.status = "running"
         session.stage = "planning"
         session = self.sessions.update(session)
-        output = self.runtime.run(session.request)
+
+        intent = self.intent_parser.parse(session.request)
+        decision = self.decision_engine.decide(intent)
+        session.stage = "execution"
+        session = self.sessions.update(session)
+
+        try:
+            output = self.runtime.run(session.request, agent=decision.agent)
+        except TypeError:
+            output = self.runtime.run(session.request)
+
         session.output = output
         session.status = "completed"
         session.stage = "delivery"
