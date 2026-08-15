@@ -30,7 +30,6 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
-        """نقطه بررسی وضعیت سرویس و بازیابی Session را ارائه می‌کند."""
         if self.path == "/health":
             self._send_json(200, {"status": "فعال"})
             return
@@ -50,39 +49,30 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
 
     def do_POST(self) -> None:
-        """درخواست POST برای اجرای مستقیم یا Session محور Manager را پردازش می‌کند."""
         if not self._authorized():
             return
-
         try:
             length = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
-
             if self.path == "/execute":
-                result = execute(body.get("request", ""), body.get("agent", "developer"))
-                self._send_json(200, result)
+                self._send_json(200, execute(body.get("request", ""), body.get("agent", "developer")))
                 return
-
             if self.path == "/session/start":
                 session_id = body.get("session_id", "").strip()
                 request = body.get("request", "").strip()
                 if not session_id or not request:
                     self._send_json(400, {"error": "session_id و request الزامی هستند."})
                     return
-                state = self.session_runtime.start(session_id, request)
-                self._send_json(200, state.__dict__)
+                self._send_json(200, self.session_runtime.start(session_id, request).__dict__)
                 return
-
             if self.path == "/session/answer":
                 session_id = body.get("session_id", "").strip()
                 answer = body.get("answer", "").strip()
                 if not session_id or not answer:
                     self._send_json(400, {"error": "session_id و answer الزامی هستند."})
                     return
-                state = self.session_runtime.answer(session_id, answer)
-                self._send_json(200, state.__dict__)
+                self._send_json(200, self.session_runtime.answer(session_id, answer).__dict__)
                 return
-
             self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
         except json.JSONDecodeError:
             self._send_json(400, {"error": "JSON نامعتبر است."})
@@ -94,12 +84,14 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(error)})
 
     def log_message(self, format: str, *args) -> None:
-        """گزارش‌های پیش‌فرض HTTP را فارسی و کوتاه نگه می‌دارد."""
         print(f"درخواست HTTP: {format % args}")
 
 
+# Backward-compatible name used by the production tests.
+APIHandler = ManagerRequestHandler
+
+
 def run_server(host: str = "127.0.0.1", port: int = 8080) -> None:
-    """سرور HTTP محلی Manager را اجرا می‌کند."""
     server = HTTPServer((host, port), ManagerRequestHandler)
     print(f"Manager در http://{host}:{port} اجرا شد.")
     server.serve_forever()
