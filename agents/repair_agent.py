@@ -14,21 +14,20 @@ class RepairPlan:
 
 
 class RepairAgent:
-    """FailureAnalysis را به RepairPlan تبدیل می‌کند.
+    """Failure را به برنامه اصلاح تبدیل می‌کند؛ اجرای تغییر به Agent توسعه/GitHub سپرده می‌شود."""
 
-    این لایه عمداً کد را مستقیماً تغییر نمی‌دهد؛ اجرای تغییر به Engineering/GitHub Agent سپرده می‌شود.
-    """
+    STRATEGIES = {
+        "syntax": "inspect_and_fix_syntax",
+        "dependency": "inspect_dependencies_and_imports",
+        "test": "inspect_failing_test_and_related_code",
+        "permission": "inspect_permissions_and_workflow_configuration",
+        "timeout": "inspect_timeout_and_runtime_hotspots",
+        "security": "inspect_security_finding_and_apply_minimal_safe_fix",
+        "unknown": "inspect_full_ci_log_and_context",
+    }
 
     def plan(self, analysis: FailureAnalysis) -> RepairPlan:
-        strategies = {
-            "syntax": "inspect_and_fix_syntax",
-            "dependency": "inspect_dependencies_and_imports",
-            "test": "inspect_failing_test_and_related_code",
-            "permission": "inspect_permissions_and_workflow_configuration",
-            "timeout": "inspect_timeout_and_runtime_hotspots",
-            "unknown": "inspect_full_ci_log_and_context",
-        }
-        strategy = strategies.get(analysis.category, "inspect_full_ci_log_and_context")
+        strategy = self.STRATEGIES.get(analysis.category, self.STRATEGIES["unknown"])
         reason = analysis.root_cause_hint
         if analysis.failing_tests:
             reason += " تست‌های هدف: " + ", ".join(analysis.failing_tests[:10])
@@ -42,4 +41,5 @@ class RepairAgent:
             "reason": plan.reason,
             "change": plan.change,
             "requires_execution": True,
+            "loop": "retest_after_fix",
         }

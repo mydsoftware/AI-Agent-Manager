@@ -21,10 +21,13 @@ class IntelligentTaskRouter:
 
     RULES = (
         ("github-project", ("github", "repository", "repo", "branch", "pull request", "pr", "commit", "فایل", "گیتهاب"), True),
+        ("security", ("security", "pentest", "penetration", "vulnerability", "exploit", "hardening", "امنیت", "هک", "تست نفوذ", "آسیب‌پذیری", "نفوذ"), True),
         ("qa", ("test", "testing", "bug", "qa", "pytest", "تست", "خطا", "آزمون"), True),
         ("developer", ("code", "coding", "implement", "fix", "refactor", "develop", "کدنویسی", "پیاده", "اصلاح"), True),
         ("research", ("research", "analyze", "analysis", "investigate", "تحقیق", "بررسی", "تحلیل"), False),
     )
+
+    ENGINEERING_AGENTS = {"github-project", "developer", "qa", "security"}
 
     def __init__(self, registry: SpecialistRegistry, governance: AgentGovernance | None = None) -> None:
         self.registry = registry
@@ -34,7 +37,7 @@ class IntelligentTaskRouter:
         """بهترین ایجنت موجود را انتخاب می‌کند؛ نام صریح وظیفه اولویت دارد."""
         if task.agent in self.registry.names():
             self._authorize(task.agent)
-            return RoutingDecision(task.agent, "ایجنت به‌صورت صریح در وظیفه تعیین شده است.", task.agent in {"github-project", "developer", "qa"})
+            return RoutingDecision(task.agent, "ایجنت به‌صورت صریح در وظیفه تعیین شده است.", task.agent in self.ENGINEERING_AGENTS)
 
         text = f"{task.description} {getattr(task, 'title', '')}".lower()
         for agent, keywords, engineering in self.RULES:
