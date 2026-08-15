@@ -1,0 +1,65 @@
+name: Autonomous Agent Loop
+
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: "درخواست کاربر"
+        required: true
+        type: string
+      session_id:
+        description: "شناسه Session"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: "1"
+      AGENT_REQUEST: ${{ inputs.request }}
+      AGENT_SESSION_ID: ${{ inputs.session_id }}
+    steps:
+      - name: دریافت کد پروژه
+        uses: actions/checkout@v4
+      - name: آماده‌سازی Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: نصب وابستگی‌ها
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: اجرای Autonomous Session
+        run: |
+          python - <<'PY'
+          import os
+          from manager.session_runtime import SessionRuntime
+          from manager.user_session import UserSessionManager
+
+          request = os.environ["AGENT_REQUEST"].strip()
+          if not request:
+              raise SystemExit("AGENT_REQUEST is required")
+
+          session_id = os.environ.get("AGENT_SESSION_ID") or "github-actions-session"
+          sessions = UserSessionManager(".agent-sessions")
+          runtime = SessionRuntime(sessions=sessions)
+          state = runtime.start(session_id, request)
+
+          print("STATUS:", state.status)
+          print("STAGE:", state.stage)
+          print("QUESTION:", state.question or "")
+          print("OUTPUT:", state.output or "")
+
+          if state.status not in {"completed", "waiting_for_user"}:
+              raise SystemExit(1)
+          PY
+      - name: انتشار Session و خروجی
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-session-output
+          path: .agent-sessions
+          if-no-files-found: ignore

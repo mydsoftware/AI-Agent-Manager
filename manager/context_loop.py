@@ -16,6 +16,14 @@ class ContextAwareExecutor:
         """وظایف را به ترتیب وابستگی اجرا و خروجی هر مرحله را ثبت می‌کند."""
         pending = {task.id: task for task in tasks}
         results: list[str] = []
+        task_ids = set(pending)
+
+        for task in pending.values():
+            missing = [dependency for dependency in task.depends_on if dependency not in task_ids]
+            if missing:
+                raise RuntimeError(
+                    f"وابستگی‌های تعریف‌نشده برای {task.id}: {', '.join(missing)}"
+                )
 
         while pending:
             ready = [
