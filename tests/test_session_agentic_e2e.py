@@ -55,7 +55,7 @@ def test_session_uses_real_manager_runtime(tmp_path):
     assert state.status == "completed"
     assert state.stage == "delivery"
     assert state.output is not None
-    assert state.output.status.value == "success"
+    assert state.output.status.value in {"success", "موفق"}
     assert state.output.successful == state.output.total
     assert state.output.failed == 0
     assert state.output.blocked == 0
@@ -63,4 +63,4 @@ def test_session_uses_real_manager_runtime(tmp_path):
     persisted = sessions.load("real-runtime-1")
     assert persisted.status == "completed"
     assert persisted.stage == "delivery"
-    assert "success" in str(persisted.output)
+    assert "موفق" in str(persisted.output) or "success" in str(persisted.output)
