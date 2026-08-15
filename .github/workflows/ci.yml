@@ -42,25 +42,22 @@ jobs:
           pip install -r requirements.txt
       - name: نصب Chromium برای Playwright
         run: python -m playwright install --with-deps chromium
-      - name: ساخت ZIP نهایی
+      - name: آماده‌سازی پکیج قابل انتشار
         run: |
-          rm -rf dist AI-Agent-Manager-v1.0.1.zip artifact-test
-          mkdir -p dist/AI-Agent-Manager
-          rsync -a --exclude='.git' --exclude='dist' --exclude='AI-Agent-Manager-v1.0.1.zip' ./ dist/AI-Agent-Manager/
-          cd dist
-          zip -r ../AI-Agent-Manager-v1.0.1.zip AI-Agent-Manager
-          cd ..
-      - name: تست ZIP نهایی
+          rm -rf dist artifact-test
+          mkdir -p dist/AI-Agent-Manager-v1.0.1
+          rsync -a --exclude='.git' --exclude='dist' --exclude='AI-Agent-Manager-v1.0.1.zip' ./ dist/AI-Agent-Manager-v1.0.1/
+      - name: تست پکیج قبل از انتشار
         run: |
           rm -rf artifact-test
           mkdir artifact-test
-          unzip -q AI-Agent-Manager-v1.0.1.zip -d artifact-test
-          cd artifact-test/AI-Agent-Manager
+          cp -a dist/AI-Agent-Manager-v1.0.1 artifact-test/AI-Agent-Manager-v1.0.1
+          cd artifact-test/AI-Agent-Manager-v1.0.1
           python -m compileall -q .
           pytest -q
-      - name: انتشار Artifact نهایی
+      - name: انتشار Artifact مستقیم
         uses: actions/upload-artifact@v4
         with:
           name: AI-Agent-Manager-v1.0.1
-          path: AI-Agent-Manager-v1.0.1.zip
+          path: dist/AI-Agent-Manager-v1.0.1
           if-no-files-found: error
