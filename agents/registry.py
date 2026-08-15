@@ -8,6 +8,7 @@ from .github_agent import GitHubAgent
 from .github_project_agent import GitHubProjectAgent
 from .qa_agent import QAAgent
 from .research_agent import ResearchAgent
+from .security_agent import SecurityAgent
 
 
 class SpecialistRegistry:
@@ -37,6 +38,7 @@ def create_default_registry() -> SpecialistRegistry:
     registry.register(ResearchAgent)
     registry.register(DeveloperAgent)
     registry.register(QAAgent)
+    registry.register(SecurityAgent)
     registry.register(GitHubAgent)
     registry.register(GitHubProjectAgent)
     return registry
