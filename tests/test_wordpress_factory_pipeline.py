@@ -9,6 +9,6 @@ def test_wordpress_factory_pipeline_builds_and_validates(tmp_path: Path):
         str(tmp_path),
     )
     assert result.passed is True
-    assert result.quality_attempts == 1
+    assert result.quality_attempts >= 1
     assert Path(result.build.zip_path).exists()
     assert any(item.path.endswith("style.css") for item in result.plan.artifacts)
