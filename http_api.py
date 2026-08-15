@@ -4,7 +4,7 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from api import execute
-from manager.auth import APIAuthenticator
+from manager.api_guard import APIGuard
 from manager.session_runtime import SessionRuntime
 from manager.user_session import UserSessionManager
 
@@ -12,7 +12,7 @@ from manager.user_session import UserSessionManager
 class ManagerRequestHandler(BaseHTTPRequestHandler):
     """درخواست‌های HTTP مربوط به اجرای Manager را مدیریت می‌کند."""
 
-    authenticator = APIAuthenticator()
+    guard = APIGuard()
     session_runtime = SessionRuntime(sessions=UserSessionManager("data/sessions"))
 
     def _send_json(self, status: int, data: dict) -> None:
@@ -23,10 +23,18 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _authorized(self) -> bool:
+        if self.guard.authorized(self.headers.get("X-API-Key")):
+            return True
+        self._send_json(401, {"error": "کلید دسترسی معتبر نیست."})
+        return False
+
     def do_GET(self) -> None:
         """نقطه بررسی وضعیت سرویس و بازیابی Session را ارائه می‌کند."""
         if self.path == "/health":
             self._send_json(200, {"status": "فعال"})
+            return
+        if not self._authorized():
             return
         if self.path.startswith("/session/"):
             session_id = self.path.removeprefix("/session/").strip("/")
@@ -43,8 +51,7 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """درخواست POST برای اجرای مستقیم یا Session محور Manager را پردازش می‌کند."""
-        if not self.authenticator.validate(self.headers.get("X-API-Key")):
-            self._send_json(401, {"error": "کلید دسترسی معتبر نیست."})
+        if not self._authorized():
             return
 
         try:
@@ -77,6 +84,8 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                 return
 
             self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
+        except json.JSONDecodeError:
+            self._send_json(400, {"error": "JSON نامعتبر است."})
         except ValueError as error:
             self._send_json(400, {"error": str(error)})
         except FileNotFoundError:
