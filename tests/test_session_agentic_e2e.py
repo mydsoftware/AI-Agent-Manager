@@ -6,9 +6,9 @@ class ReportRuntime:
     def __init__(self):
         self.calls = []
 
-    def run(self, request: str):
-        self.calls.append(request)
-        return {"status": "completed", "artifact": "final-output", "request": request}
+    def run(self, request: str, agent: str = "developer"):
+        self.calls.append((request, agent))
+        return {"status": "completed", "artifact": "final-output", "request": request, "agent": agent}
 
 
 def test_ambiguous_request_resumes_into_agent_runtime(tmp_path):
@@ -24,6 +24,7 @@ def test_ambiguous_request_resumes_into_agent_runtime(tmp_path):
     assert state.status == "completed"
     assert state.stage == "delivery"
     assert state.output["artifact"] == "final-output"
+    assert state.output["agent"] == "developer"
     assert len(runtime.calls) == 1
 
 
@@ -32,9 +33,10 @@ def test_complete_request_goes_directly_to_runtime(tmp_path):
     runtime = ReportRuntime()
     flow = SessionRuntime(sessions=sessions, runtime=runtime)
 
-    state = flow.start("e2e-2", "یک سایت خدمات ماهواره مرکزی با صفحه معرفی و تماس بساز")
+    state = flow.start("e2e-2", "برای گیتهاب یک پروژه بساز")
     assert state.status == "completed"
     assert state.stage == "delivery"
+    assert state.output["agent"] == "github"
     assert len(runtime.calls) == 1
 
 
