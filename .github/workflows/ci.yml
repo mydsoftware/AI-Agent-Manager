@@ -29,3 +29,23 @@ jobs:
 
       - name: اجرای همه آزمون‌ها
         run: pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: دریافت کد پروژه
+        uses: actions/checkout@v4
+
+      - name: ساخت پکیج انتشار
+        run: |
+          mkdir -p dist/AI-Agent-Manager
+          rsync -a --exclude='.git' --exclude='dist' ./ dist/AI-Agent-Manager/
+          tar -czf AI-Agent-Manager.tar.gz -C dist AI-Agent-Manager
+
+      - name: انتشار Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AI-Agent-Manager-package
+          path: AI-Agent-Manager.tar.gz
+          if-no-files-found: error
