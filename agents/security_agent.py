@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import re
 from urllib.request import Request, urlopen
 
+from manager.task import Task
+from .base_agent import BaseAgent
+
 
 @dataclass(frozen=True)
 class SecurityFinding:
@@ -18,13 +21,10 @@ class SecurityResult:
     findings: tuple[SecurityFinding, ...] = ()
 
 
-class SecurityAgent:
-    """ایجنت امنیتی برای بررسی دفاعی Source، وابستگی‌ها و HTTP.
+class SecurityAgent(BaseAgent):
+    """ایجنت امنیتی برای بررسی دفاعی Source، وابستگی‌ها و HTTP."""
 
-    تست‌های فعال فقط روی URL صریحاً ارائه‌شده اجرا می‌شوند و شامل بررسی‌های
-    کم‌خطر مانند Header، Cookie و افشای اطلاعات هستند؛ این Agent ابزار
-    بهره‌برداری مخرب یا payload تهاجمی تولید نمی‌کند.
-    """
+    name = "security"
 
     SOURCE_PATTERNS = (
         (r"eval\s*\(", "high", "code-execution", "استفاده از eval شناسایی شد."),
@@ -34,6 +34,24 @@ class SecurityAgent:
         (r"\b(?:shell_exec|system|passthru)\s*\(", "high", "command-execution", "اجرای مستقیم فرمان سیستم شناسایی شد."),
         (r"pickle\.loads\s*\(", "high", "unsafe-deserialization", "Deserialization ناامن شناسایی شد."),
     )
+
+    def run(self, task: Task) -> str:
+        """وظیفه امنیتی JSON را به نتیجه اسکن تبدیل می‌کند."""
+        import json
+        try:
+            command = json.loads(task.description)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError("وظیفه Security باید JSON معتبر باشد.") from error
+        if not isinstance(command, dict):
+            raise ValueError("ساختار وظیفه Security معتبر نیست.")
+        if command.get("action") == "http":
+            result = self.scan_http(str(command["url"]))
+        else:
+            result = self.scan(command.get("source", command.get("diff", "")), command.get("dependency_report"))
+        return json.dumps({
+            "status": "passed" if result.passed else "failed",
+            "findings": [item.__dict__ for item in result.findings],
+        }, ensure_ascii=False)
 
     def scan(self, diff: str | None, dependency_report: str | None = None) -> SecurityResult:
         text = diff or ""
@@ -49,11 +67,10 @@ class SecurityAgent:
         return SecurityResult(not self._blocking(findings), tuple(findings))
 
     def scan_source(self, source: str) -> SecurityResult:
-        """Source کامل پروژه را با قواعد دفاعی بررسی می‌کند."""
         return self.scan(source)
 
     def scan_http(self, url: str, timeout: int = 10) -> SecurityResult:
-        """Headerها، Cookieها و افشای اطلاعات HTTP را بررسی می‌کند."""
+        """Headerها، Cookieها و افشای اطلاعات HTTP را بدون payload تهاجمی بررسی می‌کند."""
         if not url.startswith(("http://", "https://")):
             raise ValueError("URL باید با http:// یا https:// شروع شود.")
 
