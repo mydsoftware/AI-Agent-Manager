@@ -24,16 +24,17 @@ class ManagerOrchestrator:
         self.supervisor = Supervisor()
 
     def execute(self, request: str, executor: TaskExecutor, agent: str | None = None) -> ManagerReport:
-        """درخواست را تحلیل، اجرا و در زمان اجرا در صورت نیاز بازطراحی می‌کند."""
+        """درخواست را تحلیل، برنامه‌ریزی و اجرا می‌کند."""
         intent = self.intent_parser.parse(request)
         decision = self.decision_engine.decide(intent)
+        selected_agent = agent or decision.agent
         if agent:
             decision.agent = agent
             decision.reason = "ایجنت توسط درخواست‌کننده مشخص شده است."
             decision.confidence = 1.0
-        intent.agent = decision.agent
+        intent.agent = selected_agent
         self.memory.add("تصمیم Manager", {
-            "agent": decision.agent,
+            "agent": selected_agent,
             "reason": decision.reason,
             "confidence": decision.confidence,
         })
@@ -41,6 +42,10 @@ class ManagerOrchestrator:
         context = AgentContext()
         correction_loop = CorrectionLoop(executor.loop, context=context)
         plan = self.multi_agent_planner.plan(intent).tasks
+        if agent:
+            for task in plan:
+                task.agent = selected_agent
+
         completed_tasks = []
         replans = 0
         index = 0
@@ -64,7 +69,6 @@ class ManagerOrchestrator:
 
             if supervisor_decision.action == SupervisorAction.STOP:
                 break
-
             if supervisor_decision.action in (SupervisorAction.RETRY, SupervisorAction.SKIP):
                 if replans >= 2:
                     break
@@ -74,7 +78,6 @@ class ManagerOrchestrator:
                 plan = completed_tasks + replanned.tasks
                 index = len(completed_tasks)
                 continue
-
             index += 1
 
         return ManagerReport(completed_tasks)
