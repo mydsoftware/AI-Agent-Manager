@@ -15,6 +15,9 @@ from agents.wordpress_smoke_test_agent import WordPressSmokeTestAgent, WordPress
 from agents.wordpress_ui_test_agent import WordPressUITestAgent, WordPressUITestResult
 from agents.wordpress_browser_test_agent import WordPressBrowserTestAgent, WordPressBrowserTestResult
 from agents.wordpress_runtime_browser_runner import WordPressRuntimeBrowserRunner
+from agents.wordpress_security_test_agent import WordPressSecurityTestAgent, WordPressSecurityTestResult
+from agents.wordpress_performance_test_agent import WordPressPerformanceTestAgent, WordPressPerformanceTestResult
+from agents.wordpress_requirement_compliance_agent import WordPressRequirementComplianceAgent, WordPressRequirementComplianceResult
 from manager.wordpress_build_executor import WordPressBuildExecutor, WordPressBuildResult
 from manager.wordpress_quality_loop import WordPressQualityLoop
 
@@ -32,12 +35,15 @@ class WordPressFactoryResult:
     smoke_test: WordPressSmokeTestResult
     ui_test: WordPressUITestResult
     browser_test: WordPressBrowserTestResult
+    security_test: WordPressSecurityTestResult
+    performance_test: WordPressPerformanceTestResult
+    requirement_compliance: WordPressRequirementComplianceResult
     delivery: WordPressDeliveryResult | None
     installer: WordPressInstallerResult | None
 
 
 class WordPressFactoryPipeline:
-    """Request → Build → QA → Package → Smoke/UI → Local/Live Browser → Delivery."""
+    """Request → Build → QA → Package → Smoke/UI → Browser → Security/Performance/Compliance → Delivery."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
@@ -51,6 +57,9 @@ class WordPressFactoryPipeline:
         self.ui_test_agent = WordPressUITestAgent()
         self.browser_test_agent = WordPressBrowserTestAgent()
         self.runtime_browser_runner = WordPressRuntimeBrowserRunner()
+        self.security_test_agent = WordPressSecurityTestAgent()
+        self.performance_test_agent = WordPressPerformanceTestAgent()
+        self.requirement_compliance_agent = WordPressRequirementComplianceAgent()
         self.delivery_agent = WordPressDeliveryAgent()
         self.installer_agent = WordPressInstallerAgent()
 
@@ -73,8 +82,12 @@ class WordPressFactoryPipeline:
         smoke_test = WordPressSmokeTestResult(False, (), ("not-built",))
         ui_test = WordPressUITestResult(False, (), ("not-built",))
         browser_test = WordPressBrowserTestResult(False, False, (), ("not-built",))
+        security_test = WordPressSecurityTestResult(False, (), ("not-built",))
+        performance_test = WordPressPerformanceTestResult(False, (), ("not-built",), {})
+        requirement_compliance = WordPressRequirementComplianceResult(False, (), ("not-built",))
         delivery = None
         installer = None
+
         if quality.passed:
             self._package(Path(build.root), Path(build.zip_path))
             package = self.package_validator.validate(build.zip_path)
@@ -88,17 +101,30 @@ class WordPressFactoryPipeline:
                     else:
                         browser_test = self.runtime_browser_runner.run(build.root).browser
                 if smoke_test.passed and ui_test.passed and browser_test.passed:
+                    security_test = self.security_test_agent.run(build.zip_path)
+                    performance_test = self.performance_test_agent.run(build.zip_path)
+                    requirement_compliance = self.requirement_compliance_agent.run(request, build.zip_path)
+                if (
+                    smoke_test.passed and ui_test.passed and browser_test.passed
+                    and security_test.passed and performance_test.passed and requirement_compliance.passed
+                ):
                     delivery_dir = Path(output_dir) / "delivery"
                     delivery = self.delivery_agent.deliver(build.zip_path, package, requirements.site_title, str(delivery_dir))
                     installer = self.installer_agent.prepare(build.zip_path, str(delivery_dir))
 
         passed = (
             quality.passed and package.passed and smoke_test.passed and ui_test.passed
-            and browser_test.passed and delivery is not None and delivery.delivered
+            and browser_test.passed and security_test.passed and performance_test.passed
+            and requirement_compliance.passed and delivery is not None and delivery.delivered
             and installer is not None and installer.prepared
         )
-        findings = quality.quality.findings + package.findings + smoke_test.findings + ui_test.findings + browser_test.findings
+        findings = (
+            quality.quality.findings + package.findings + smoke_test.findings + ui_test.findings
+            + browser_test.findings + security_test.findings + performance_test.findings
+            + requirement_compliance.findings
+        )
         return WordPressFactoryResult(
             passed, plan, requirements, build, quality.attempts, findings,
-            plugins, package, smoke_test, ui_test, browser_test, delivery, installer,
+            plugins, package, smoke_test, ui_test, browser_test, security_test,
+            performance_test, requirement_compliance, delivery, installer,
         )
