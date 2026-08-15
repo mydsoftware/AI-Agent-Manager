@@ -9,6 +9,7 @@ from agents.wordpress_requirements_agent import WordPressRequirementsAgent
 from agents.wordpress_theme_builder import WordPressThemeBuilder
 from agents.wordpress_plugin_builder import WordPressPluginBuilder
 from agents.wordpress_package_validator import WordPressPackageValidator, PackageValidationResult
+from agents.wordpress_delivery_agent import WordPressDeliveryAgent, WordPressDeliveryResult
 from manager.wordpress_build_executor import WordPressBuildExecutor, WordPressBuildResult
 from manager.wordpress_quality_loop import WordPressQualityLoop
 
@@ -23,10 +24,11 @@ class WordPressFactoryResult:
     findings: tuple[str, ...]
     plugins_created: tuple[str, ...]
     package: PackageValidationResult
+    delivery: WordPressDeliveryResult | None
 
 
 class WordPressFactoryPipeline:
-    """Request → Requirements → Build → Quality/Repair → Package → Final Validation."""
+    """Request → Requirements → Build → Quality/Repair → Package → Validation → Delivery."""
 
     def __init__(self, max_quality_attempts: int = 3) -> None:
         self.requirements = WordPressRequirementsAgent()
@@ -36,6 +38,7 @@ class WordPressFactoryPipeline:
         self.plugin_builder = WordPressPluginBuilder()
         self.quality = WordPressQualityLoop(max_quality_attempts)
         self.package_validator = WordPressPackageValidator()
+        self.delivery_agent = WordPressDeliveryAgent()
 
     def _package(self, root: Path, zip_path: Path) -> None:
         zip_path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,11 +58,19 @@ class WordPressFactoryPipeline:
 
         quality = self.quality.run(build.root)
         package = PackageValidationResult(False, ("not-built",), ())
+        delivery = None
         if quality.passed:
             self._package(Path(build.root), Path(build.zip_path))
             package = self.package_validator.validate(build.zip_path)
+            if package.passed:
+                delivery = self.delivery_agent.deliver(
+                    build.zip_path,
+                    package,
+                    requirements.site_title,
+                    str(Path(output_dir) / "delivery"),
+                )
 
-        passed = quality.passed and package.passed
+        passed = quality.passed and package.passed and delivery is not None and delivery.delivered
         findings = quality.quality.findings + package.findings
         return WordPressFactoryResult(
             passed,
@@ -70,4 +81,5 @@ class WordPressFactoryPipeline:
             findings,
             plugins,
             package,
+            delivery,
         )
