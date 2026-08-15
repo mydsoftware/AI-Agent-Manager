@@ -20,5 +20,7 @@ jobs:
           python-version: "3.12"
       - name: نصب وابستگی‌ها
         run: python -m pip install -r requirements.txt
+      - name: نصب Chromium برای Playwright
+        run: python -m playwright install --with-deps chromium
       - name: اجرای آزمون‌ها
         run: python -m pytest -q
