@@ -27,9 +27,15 @@ def test_http_api_protects_execute_and_session_endpoints(monkeypatch, tmp_path):
         except urllib.error.HTTPError as error:
             assert error.code == 401
 
-        request = urllib.request.Request(base + "/session/test")
-        with urllib.request.urlopen(request) as response:
-            assert response.status in (200, 404)
+        request = urllib.request.Request(
+            base + "/session/test",
+            headers={"X-API-Key": "s102-secret"},
+        )
+        try:
+            with urllib.request.urlopen(request) as response:
+                assert response.status in (200, 404)
+        except urllib.error.HTTPError as error:
+            assert error.code == 404
     finally:
         server.shutdown()
         thread.join(timeout=2)
