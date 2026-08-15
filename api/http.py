@@ -3,13 +3,20 @@ from __future__ import annotations
 from flask import Flask, jsonify, request
 
 from api.agent_team_api import AgentTeamAPI
+from api.session_api import create_session_blueprint
+from manager.user_session_manager import UserSessionManager
 from runtime import ManagerRuntime
 
 
-def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None) -> Flask:
-    """برنامه HTTP مدیریتی و اجرای درخواست‌های Manager را می‌سازد."""
+def create_app(
+    team_api: AgentTeamAPI,
+    runtime: ManagerRuntime | None = None,
+    session_manager: UserSessionManager | None = None,
+) -> Flask:
+    """برنامه HTTP مدیریتی، اجرای درخواست و Session کاربر را می‌سازد."""
     app = Flask(__name__)
     manager_runtime = runtime or ManagerRuntime()
+    app.register_blueprint(create_session_blueprint(session_manager))
 
     @app.get("/api/agents")
     def list_agents():
