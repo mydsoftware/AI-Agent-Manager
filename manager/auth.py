@@ -14,13 +14,13 @@ class APIAuthenticator:
 
     @property
     def enabled(self) -> bool:
-        """مشخص می‌کند که کلید API تنظیم شده است یا خیر."""
-        return bool(self.api_key)
+        return bool(os.getenv(self.environment_name) or self.api_key)
 
     def validate(self, provided_key: str | None) -> bool:
-        """کلید دریافتی را با مقایسه ثابت‌زمان و پشتیبانی از Unicode بررسی می‌کند."""
-        if not self.api_key or not provided_key:
+        """کلید را در زمان درخواست از محیط می‌خواند تا تست و runtime هر دو درست باشند."""
+        configured_key = os.getenv(self.environment_name) or self.api_key
+        if not configured_key or not provided_key:
             return False
-        expected = hashlib.sha256(self.api_key.encode("utf-8")).digest()
+        expected = hashlib.sha256(configured_key.encode("utf-8")).digest()
         provided = hashlib.sha256(provided_key.encode("utf-8")).digest()
         return hmac.compare_digest(expected, provided)
