@@ -1,6 +1,8 @@
 # پل ChatGPT → AI-Agent-Manager
 
-این پل درخواست را به‌صورت فایل JSON وارد صف `agent_requests/` می‌کند. GitHub Actions آن را اجرا می‌کند، Manager مسیر Agentها را ثبت می‌کند، DeepSeek فایل‌های پروژه را تولید می‌کند و GitHubAgent فایل‌ها را در Branch جدید می‌نویسد و Pull Request می‌سازد.
+مدل خارجی در این معماری استفاده نمی‌شود. **ChatGPT تنها کنترل‌کننده هوش مصنوعی است** و AI-Agent-Manager نقش Orchestrator/Executor را دارد.
+
+درخواست‌ها به‌صورت ساختاریافته وارد `agent_requests/` می‌شوند و GitHub Actions آن‌ها را برای اجرای Manager پردازش می‌کند.
 
 ## قرارداد درخواست
 
@@ -9,18 +11,15 @@
   "request": "یک سایت فروشگاهی با HTML بساز",
   "repository": "mydsoftware/demo-store",
   "base": "main",
-  "branch": "ai-agent/demo-store",
-  "pr_title": "ساخت سایت فروشگاهی با HTML"
+  "branch": "ai-agent/demo-store"
 }
 ```
 
 ## Secrets موردنیاز
 
-- `DEEPSEEK_API_KEY`: کلید DeepSeek
-- `GH_PAT`: در صورت کار روی Repository دیگری غیر از همین Repository، یک GitHub token با دسترسی لازم به Repository مقصد
+- `GH_PAT`: فقط اگر Manager باید روی Repository دیگری با سطح دسترسی بیشتر کار کند.
+- برای مدل هوش مصنوعی هیچ API Key خارجی لازم نیست.
 
-اگر مقصد خود همین Repository باشد، `GITHUB_TOKEN` خود Actions کافی است.
+## معماری
 
-## خروجی
-
-نتیجه در `agent_results/<request-name>.json` ثبت می‌شود و Pull Request پروژه تولیدشده در خروجی Workflow اعلام می‌شود.
+ChatGPT → GitHub → AI-Agent-Manager → Agents → GitHub → Tests → Result
