@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from manager.user_session import UserSessionManager, UserSessionResult
 from runtime import ManagerRuntime
 
@@ -32,10 +30,7 @@ class SessionRuntime:
         return self.sessions.get(session_id)
 
     def _execute(self, session: UserSessionResult) -> UserSessionResult:
-        request = session.context.get("resolved_request", session.context.get("request", None))
-        if not request:
-            stored = self.sessions.get(session.session_id)
-            request = stored.context.get("resolved_request") or getattr(stored, "request", "")
+        request = session.request
         answers = session.context.get("user_answers", [])
         if answers:
             request = f"{request}\n\nاطلاعات تکمیلی کاربر:\n" + "\n".join(
