@@ -7,7 +7,7 @@ from manager.user_session import UserSessionManager, UserSession
 
 
 class SessionRuntime:
-    """User-facing clarification/resume boundary around ManagerRuntime."""
+    """مرز اجرای درخواست کاربر، شفاف‌سازی و تحویل خروجی نهایی."""
 
     def __init__(self, sessions: UserSessionManager | None = None, runtime: Any | None = None) -> None:
         self.sessions = sessions or UserSessionManager()
@@ -43,6 +43,14 @@ class SessionRuntime:
         session.question = None
         return self._execute(session)
 
+    @staticmethod
+    def _serialize_output(output: Any) -> Any:
+        if hasattr(output, "to_dict"):
+            return output.to_dict()
+        if isinstance(output, dict):
+            return output
+        return {"result": output}
+
     def _execute(self, session: UserSession) -> UserSession:
         session.status = "running"
         session.stage = "planning"
@@ -58,7 +66,15 @@ class SessionRuntime:
         except TypeError:
             output = self.runtime.run(session.request)
 
-        session.output = output
+        session.output = {
+            "request": session.request,
+            "agent": decision.agent,
+            "decision": {
+                "reason": decision.reason,
+                "confidence": decision.confidence,
+            },
+            "report": self._serialize_output(output),
+        }
         session.status = "completed"
         session.stage = "delivery"
         return self.sessions.update(session)
