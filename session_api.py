@@ -3,11 +3,13 @@ from __future__ import annotations
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 
+from manager.api_guard import APIGuard
 from manager.session_runtime import SessionRuntime
 
 
 class SessionAPIHandler(BaseHTTPRequestHandler):
     runtime = SessionRuntime()
+    guard = APIGuard()
 
     def send_json(self, status: int, data: dict) -> None:
         payload = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
@@ -21,11 +23,17 @@ class SessionAPIHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
+    def authorized(self) -> bool:
+        return self.guard.authorized(self.headers.get("X-API-Key"))
+
     @staticmethod
     def state(state) -> dict:
         return state.to_dict() if hasattr(state, "to_dict") else state.__dict__
 
     def do_POST(self) -> None:
+        if not self.authorized():
+            self.send_json(401, {"error": "کلید دسترسی معتبر نیست."})
+            return
         try:
             body = self.body()
             if self.path == "/session/start":
@@ -48,6 +56,9 @@ class SessionAPIHandler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": str(exc)})
 
     def do_GET(self) -> None:
+        if not self.authorized():
+            self.send_json(401, {"error": "کلید دسترسی معتبر نیست."})
+            return
         if self.path.startswith("/session/"):
             session_id = self.path.removeprefix("/session/").strip("/")
             if not session_id:
