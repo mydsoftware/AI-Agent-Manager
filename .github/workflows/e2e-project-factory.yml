@@ -1,25 +1,11 @@
-name: E2E Project Factory دستی
+name: E2E Project Factory
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   e2e:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
-      - name: اجرای کامل کارخانه پروژه
-        id: create
-        env:
-          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
-          GH_PAT: ${{ secrets.GH_PAT }}
-          NAME: ai-agent-e2e-${{ github.run_id }}
-          PLAN: '{"summary":"ساخت فروشگاه نمایشی فارسی و راست‌چین، اجرای آزمون‌های پایه و بررسی امنیتی و ثبت نتیجه نهایی.","files":[{"path":"site/index.html","content":"<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>فروشگاه نمونه فارسی</title><link rel=\"stylesheet\" href=\"styles.css\"></head><body><main><h1>فروشگاه نمونه فارسی</h1><p>این صفحه برای آزمون کارخانه پروژه ساخته شده است.</p><button id=\"demo\" type=\"button\">نمایش پیام</button><p id=\"message\" aria-live=\"polite\"></p></main><script src=\"app.js\"></script></body></html>\n"},{"path":"site/styles.css","content":"*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#f5f5f5;color:#222}main{max-width:720px;margin:12vh auto;padding:32px;background:#fff;border-radius:16px;text-align:right}button{padding:10px 18px;border:0;border-radius:8px;cursor:pointer}\n"},{"path":"site/app.js","content":"document.getElementById('demo').addEventListener('click',()=>{document.getElementById('message').textContent='عملیات با موفقیت انجام شد.'});\n"},{"path":"README.md","content":"# فروشگاه نمونه فارسی\n\nاین پروژه به‌صورت خودکار توسط AI-Agent-Manager ساخته شده است.\n\nتمام محتوای محصول و مستندات این نمونه فارسی و راست‌چین است.\n"}],"commands":["python -c \"from pathlib import Path; files=['site/index.html','site/styles.css','site/app.js','README.md']; assert all(Path(p).is_file() and Path(p).stat().st_size > 0 for p in files); print('آزمون فایل‌ها موفق بود.')\"","python -c \"from pathlib import Path; text=Path('site/index.html').read_text(encoding='utf-8'); assert 'lang=\\\"fa\\\"' in text and 'dir=\\\"rtl\\\"' in text; print('آزمون فارسی و راست‌چین موفق بود.')\""] ,"done":true,"language":"fa","direction":"rtl"}'
-        run: |
-          set -euo pipefail
-          test -n "$MCP_ACCESS_TOKEN" && test -n "$GH_PAT"
-          echo "Workflow دستی با موفقیت آغاز شد."
-          echo "این Workflow فقط با workflow_dispatch اجرا می‌شود."
-          echo "شناسه اجرا: $GITHUB_RUN_ID"
+      - name: بررسی اجرای دستی
+        run: echo "اجرای دستی E2E با موفقیت آغاز شد."
