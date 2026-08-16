@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 
 interface Env {
@@ -96,9 +97,7 @@ export default {
     if (!authorized(request, env)) return new Response("Unauthorized", { status: 401 });
 
     const mcp = server(env);
-    // Streamable HTTP transport is exposed by the SDK through the server's transport adapters.
-    const { StreamableHTTPServerTransport } = await import("@modelcontextprotocol/sdk/server/streamableHttp.js");
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     await mcp.connect(transport);
     return transport.handleRequest(request);
   },
