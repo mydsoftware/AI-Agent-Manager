@@ -36,12 +36,49 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: اجرای درخواست Manager
+      - name: تعیین درخواست
+        id: request
+        shell: bash
         run: |
-          echo "External model disabled. ChatGPT is the only AI controller."
           REQUEST_FILE="${{ inputs.request_file }}"
           if [ -z "$REQUEST_FILE" ]; then
-            REQUEST_FILE=$(find agent_requests -maxdepth 1 -type f -name '*.json' | sort | tail -n 1)
+            REQUEST_FILE=$(find agent_requests -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -n | tail -n 1 | cut -d' ' -f2-)
           fi
           test -n "$REQUEST_FILE"
-          python -m manager "$REQUEST_FILE"
+          test -f "$REQUEST_FILE"
+          echo "request_file=$REQUEST_FILE" >> "$GITHUB_OUTPUT"
+          echo "REQUEST_FILE=$REQUEST_FILE"
+
+      - name: اجرای درخواست Manager
+        id: manager
+        shell: bash
+        run: |
+          mkdir -p agent_results
+          REQUEST_FILE="${{ steps.request.outputs.request_file }}"
+          RESULT_FILE="agent_results/$(basename "$REQUEST_FILE" .json).result.json"
+          set +e
+          python -m manager "$REQUEST_FILE" | tee "$RESULT_FILE"
+          CODE=${PIPESTATUS[0]}
+          set -e
+          echo "result_file=$RESULT_FILE" >> "$GITHUB_OUTPUT"
+          exit "$CODE"
+
+      - name: انتشار نتیجه به Repository
+        if: always() && hashFiles('agent_results/*.result.json') != ''
+        shell: bash
+        run: |
+          git config user.name "AI-Agent-Manager"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agent_results/*.result.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Publish AI-Agent-Manager result"
+          git push
+
+      - name: انتشار Artifact نتیجه
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-agent-manager-result
+          path: |
+            agent_results/*.result.json
+          if-no-files-found: ignore
