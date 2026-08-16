@@ -57,7 +57,7 @@ jobs:
             --data "$BODY" \
             "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
           echo "$RESULT" | tee /tmp/mcp-result.txt
-          grep -Eq 'agent-dispatched|repository|repo' /tmp/mcp-result.txt
+          grep -Eq 'dispatched-to-target-repository|repository|repo' /tmp/mcp-result.txt
 
           python - <<'PY' > /tmp/repository.txt
           import json, re
@@ -84,14 +84,13 @@ jobs:
           echo "Created repository: $REPOSITORY"
           echo "Repository URL: $URL"
 
-      - name: Verify created repository
+      - name: Verify created repository and agent workflow
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           REPOSITORY: ${{ steps.create.outputs.repository }}
         run: |
           set -euo pipefail
           test -n "$GH_PAT"
-          test -n "$REPOSITORY"
           for i in $(seq 1 12); do
             CODE=$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
               -H "Authorization: Bearer ${GH_PAT}" \
@@ -100,12 +99,71 @@ jobs:
               "https://api.github.com/repos/${REPOSITORY}")
             if [ "$CODE" = "200" ]; then
               cat /tmp/repo.json
-              exit 0
+              break
             fi
             sleep 5
           done
-          cat /tmp/repo.json
+          test -s /tmp/repo.json
+          curl -fsS \
+            -H "Authorization: Bearer ${GH_PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPOSITORY}/contents/.github/workflows/agent.yml?ref=main" >/tmp/agent-workflow.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/agent-workflow.json'))
+          assert d.get('name') == 'agent.yml'
+          print('Target repository contains autonomous agent workflow.')
+          PY
+
+      - name: Wait for autonomous agent completion
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            CODE=$(curl -sS -o /tmp/state.json -w '%{http_code}' \
+              -H "Authorization: Bearer ${GH_PAT}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPOSITORY}/contents/agent/execution-state.json?ref=main")
+            if [ "$CODE" = "200" ]; then
+              RC=$(python - <<'PY'
+          import base64, json
+          d=json.load(open('/tmp/state.json'))
+          raw=base64.b64decode(d['content']).decode('utf-8')
+          state=json.loads(raw)
+          print(json.dumps(state, ensure_ascii=False, indent=2))
+          status=state.get('status')
+          if status == 'completed':
+              raise SystemExit(0)
+          if status == 'failed':
+              raise SystemExit(2)
+          raise SystemExit(1)
+          PY
+              ) || RC=$?
+              if [ "${RC:-1}" = "0" ]; then exit 0; fi
+              if [ "${RC:-1}" = "2" ]; then echo "Autonomous agent reported failure." >&2; exit 1; fi
+            fi
+            echo "Agent still running; attempt $i/30"
+            sleep 10
+          done
+          echo "Autonomous agent did not finish within the E2E timeout." >&2
           exit 1
+
+      - name: Verify final project
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+        run: |
+          set -euo pipefail
+          for path in site/index.html README.md agent/execution-state.json; do
+            curl -fsS \
+              -H "Authorization: Bearer ${GH_PAT}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPOSITORY}/contents/${path}?ref=main" >/dev/null
+            echo "verified: ${path}"
+          done
+          echo "E2E final project verification passed"
 
       - name: Summary
         env:
