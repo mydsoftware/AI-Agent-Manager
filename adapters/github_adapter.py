@@ -16,6 +16,7 @@ class GitHubClient(Protocol):
     def get_file(self, repository: str, path: str, ref: str | None = None) -> Any: ...
     def put_file(self, repository: str, path: str, content: str, message: str, branch: str, sha: str | None = None) -> Any: ...
     def create_repository(self, owner: str, name: str, description: str = "", private: bool = True, auto_init: bool = True) -> Any: ...
+    def repository_dispatch(self, repository: str, event_type: str, client_payload: dict[str, Any]) -> Any: ...
     def create_branch(self, repository: str, branch: str, base: str) -> Any: ...
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any: ...
     def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any: ...
@@ -34,14 +35,15 @@ class GitHubAPIClient:
         headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {self.token}",
-            "X-GitHub-Api-Version": "2022-11-28",
+            "X-GitHub-Api-Version": "2026-03-10",
             "User-Agent": "AI-Agent-Manager",
         }
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = Request(f"{self.api_url}{path}", data=data, headers=headers, method=method)
         try:
             with urlopen(request, timeout=30) as response:
-                return json.loads(response.read().decode("utf-8"))
+                raw = response.read().decode("utf-8")
+                return json.loads(raw) if raw else {"status": response.status}
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"GitHub API خطای {error.code}: {detail}") from error
@@ -60,7 +62,6 @@ class GitHubAPIClient:
         return self._request("PUT", f"/repos/{repository}/contents/{path}", payload)
 
     def create_repository(self, owner: str, name: str, description: str = "", private: bool = True, auto_init: bool = True) -> Any:
-        """Repository جدید را در حساب کاربری احراز‌شده می‌سازد."""
         result = self._request("POST", "/user/repos", {
             "name": name,
             "description": description[:350],
@@ -75,6 +76,9 @@ class GitHubAPIClient:
         if owner and actual_owner != owner:
             raise RuntimeError(f"Repository با مالک مورد انتظار ساخته نشد: {result.get('full_name')}")
         return result
+
+    def repository_dispatch(self, repository: str, event_type: str, client_payload: dict[str, Any]) -> Any:
+        return self._request("POST", f"/repos/{repository}/dispatches", {"event_type": event_type, "client_payload": client_payload})
 
     def create_branch(self, repository: str, branch: str, base: str) -> Any:
         base_ref = self._request("GET", f"/repos/{repository}/git/ref/heads/{base}")
@@ -110,6 +114,9 @@ class GitHubAdapter:
 
     def create_repository(self, owner: str, name: str, description: str = "", private: bool = True, auto_init: bool = True) -> Any:
         return self.client.create_repository(owner, name, description, private, auto_init)
+
+    def repository_dispatch(self, repository: str, event_type: str, client_payload: dict[str, Any]) -> Any:
+        return self.client.repository_dispatch(repository, event_type, client_payload)
 
     def create_branch(self, repository: str, branch: str, base: str) -> Any:
         return self.client.create_branch(repository, branch, base)
