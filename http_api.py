@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from api import execute
 from manager.api_guard import APIGuard
+from manager.project_factory import ProjectRepositoryFactory
 from manager.session_runtime import SessionRuntime
 from manager.user_session import UserSessionManager
 
@@ -14,6 +15,7 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
 
     guard = APIGuard()
     session_runtime = SessionRuntime(sessions=UserSessionManager("data/sessions"))
+    project_factory = ProjectRepositoryFactory()
 
     def _send_json(self, status: int, data: dict) -> None:
         payload = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
@@ -57,6 +59,18 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
             if self.path == "/execute":
                 self._send_json(200, execute(body.get("request", ""), body.get("agent", "developer")))
                 return
+            if self.path == "/project/create":
+                name = str(body.get("name", "")).strip()
+                description = str(body.get("description", "")).strip()
+                request = str(body.get("request", "")).strip()
+                project_type = str(body.get("project_type", "website")).strip() or "website"
+                is_private = bool(body.get("private", True))
+                if not name or not description or not request:
+                    self._send_json(400, {"error": "name، description و request الزامی هستند."})
+                    return
+                result = self.project_factory.create(name, description, request, project_type, is_private)
+                self._send_json(201, result.__dict__)
+                return
             if self.path == "/session/start":
                 session_id = body.get("session_id", "").strip()
                 request = body.get("request", "").strip()
@@ -87,7 +101,6 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         print(f"درخواست HTTP: {format % args}")
 
 
-# Backward-compatible name used by the production tests.
 APIHandler = ManagerRequestHandler
 
 
