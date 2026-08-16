@@ -10,11 +10,10 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
     steps:
-      - name: Call deployed Global MCP
+      - name: فراخوانی Global MCP مستقرشده
         id: create
         env:
           MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
-          RUN_ID: ${{ github.run_id }}
           NAME: ai-agent-e2e-${{ github.run_id }}
           PLAN: '{"summary":"Build a minimal Persian RTL storefront demo with HTML/CSS/JS, add basic tests, run security checks, repair blocking findings, retest, and commit the final result.","files":["site/index.html","site/styles.css","site/app.js","README.md"],"commands":["run available tests","run security checks"],"done":true}'
         run: |
@@ -22,154 +21,93 @@ jobs:
           test -n "$MCP_ACCESS_TOKEN"
           BODY=$(python - <<'PY'
           import json, os
-          payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-              "name": "create_project_repository",
-              "arguments": {
-                "name": os.environ["NAME"],
-                "description": "Disposable E2E repository created by AI-Agent-Manager",
-                "request": "Create a minimal Persian RTL storefront demo, test it, security-check it, repair blocking issues, retest, and commit the final result.",
-                "project_type": "website",
-                "private": True,
-                "plan_json": os.environ["PLAN"],
-              },
-            },
-          }
+          payload={"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_project_repository","arguments":{"name":os.environ["NAME"],"description":"Disposable E2E repository created by AI-Agent-Manager","request":"Create a minimal Persian RTL storefront demo, test it, security-check it, repair blocking issues, retest, and commit the final result.","project_type":"website","private":True,"plan_json":os.environ["PLAN"]}}}
           print(json.dumps(payload))
           PY
           )
-          INIT=$(curl -fsS --retry 3 --retry-all-errors \
-            -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json, text/event-stream" \
-            -H "MCP-Protocol-Version: 2025-03-26" \
-            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.0"}}}' \
-            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
-          echo "$INIT"
-          RESULT=$(curl -fsS --retry 3 --retry-all-errors \
-            -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json, text/event-stream" \
-            -H "MCP-Protocol-Version: 2025-03-26" \
-            --data "$BODY" \
-            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
-          echo "$RESULT" | tee /tmp/mcp-result.txt
-          grep -Eq 'dispatched-to-target-repository|repository|repo' /tmp/mcp-result.txt
-
-          python - <<'PY' > /tmp/repository.txt
-          import json, re
-          raw = open('/tmp/mcp-result.txt', encoding='utf-8-sig').read()
-          matches = re.findall(r'data:\s*(\{.*\})', raw)
-          if not matches:
-              raise SystemExit('MCP returned no JSON-RPC event')
-          event = json.loads(matches[-1])
-          text = event.get('result', {}).get('content', [{}])[0].get('text', '')
-          payload = json.loads(text)
-          repository = payload.get('repository')
-          url = payload.get('url')
-          if not repository or '/' not in repository:
-              raise SystemExit(f'Invalid repository returned by MCP: {repository!r}')
-          print(repository)
-          with open('/tmp/repository-url.txt', 'w', encoding='utf-8') as f:
-              f.write(url or '')
+          curl -fsS --retry 3 --retry-all-errors -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "MCP-Protocol-Version: 2025-03-26" --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.1"}}}' "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" | tee /tmp/mcp-init.txt
+          curl -fsS --retry 3 --retry-all-errors -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "MCP-Protocol-Version: 2025-03-26" --data "$BODY" "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" | tee /tmp/mcp-result.txt
+          python - <<'PY'
+          import json,re
+          raw=open('/tmp/mcp-result.txt',encoding='utf-8-sig').read(); matches=re.findall(r'data:\s*(\{.*\})',raw)
+          if not matches: raise SystemExit('MCP هیچ رویداد JSON-RPC برنگرداند')
+          event=json.loads(matches[-1]); result=event.get('result',{}); text=result.get('content',[{}])[0].get('text','')
+          payload=json.loads(text)
+          if payload.get('status') not in {'agent-started','completed'}: raise SystemExit(f'MCP اجرای Agent را شروع نکرد: {payload}')
+          repository=payload.get('repository'); url=payload.get('url'); execution=payload.get('execution',{})
+          run_id=execution.get('workflow_run_id')
+          if not repository or '/' not in repository: raise SystemExit(f'Repository نامعتبر: {repository!r}')
+          if not run_id: raise SystemExit(f'workflow_run_id از MCP دریافت نشد: {payload}')
+          open('/tmp/repository.txt','w').write(repository); open('/tmp/repository-url.txt','w').write(url or ''); open('/tmp/agent-run-id.txt','w').write(str(run_id))
+          print(json.dumps(payload,ensure_ascii=False,indent=2))
           PY
+          REPOSITORY=$(cat /tmp/repository.txt); URL=$(cat /tmp/repository-url.txt); RUN_ID=$(cat /tmp/agent-run-id.txt)
+          echo "repository=$REPOSITORY" >> "$GITHUB_OUTPUT"; echo "repository_url=$URL" >> "$GITHUB_OUTPUT"; echo "agent_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Repository: $REPOSITORY"; echo "Agent workflow run: $RUN_ID"; echo "URL: $URL"
 
-          REPOSITORY=$(cat /tmp/repository.txt)
-          URL=$(cat /tmp/repository-url.txt)
-          echo "repository=$REPOSITORY" >> "$GITHUB_OUTPUT"
-          echo "repository_url=$URL" >> "$GITHUB_OUTPUT"
-          echo "Created repository: $REPOSITORY"
-          echo "Repository URL: $URL"
-
-      - name: Verify created repository and agent workflow
+      - name: بررسی Repository و Workflow عامل
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           REPOSITORY: ${{ steps.create.outputs.repository }}
         run: |
           set -euo pipefail
           test -n "$GH_PAT"
-          for i in $(seq 1 12); do
-            CODE=$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
-              -H "Authorization: Bearer ${GH_PAT}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${REPOSITORY}")
-            if [ "$CODE" = "200" ]; then
-              cat /tmp/repo.json
-              break
-            fi
-            sleep 5
-          done
-          test -s /tmp/repo.json
-          curl -fsS \
-            -H "Authorization: Bearer ${GH_PAT}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPOSITORY}/contents/.github/workflows/agent.yml?ref=main" >/tmp/agent-workflow.json
+          curl -fsS -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPOSITORY}/contents/.github/workflows/agent.yml?ref=main" >/tmp/agent-workflow.json
           python - <<'PY'
           import json
-          d=json.load(open('/tmp/agent-workflow.json'))
-          assert d.get('name') == 'agent.yml'
-          print('Target repository contains autonomous agent workflow.')
+          d=json.load(open('/tmp/agent-workflow.json')); assert d.get('name')=='agent.yml'; print('Workflow عامل خودکار در Repository مقصد وجود دارد.')
           PY
 
-      - name: Wait for autonomous agent completion
+      - name: بررسی مستقیم وضعیت Workflow عامل
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           REPOSITORY: ${{ steps.create.outputs.repository }}
+          AGENT_RUN_ID: ${{ steps.create.outputs.agent_run_id }}
         run: |
           set -euo pipefail
-          for i in $(seq 1 30); do
-            CODE=$(curl -sS -o /tmp/state.json -w '%{http_code}' \
-              -H "Authorization: Bearer ${GH_PAT}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${REPOSITORY}/contents/agent/execution-state.json?ref=main")
+          test -n "$AGENT_RUN_ID"
+          for i in $(seq 1 36); do
+            CODE=$(curl -sS -o /tmp/run.json -w '%{http_code}' -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPOSITORY}/actions/runs/${AGENT_RUN_ID}")
             if [ "$CODE" = "200" ]; then
-              RC=$(python - <<'PY'
-          import base64, json
-          d=json.load(open('/tmp/state.json'))
-          raw=base64.b64decode(d['content']).decode('utf-8')
-          state=json.loads(raw)
-          print(json.dumps(state, ensure_ascii=False, indent=2))
-          status=state.get('status')
-          if status == 'completed':
-              raise SystemExit(0)
-          if status == 'failed':
-              raise SystemExit(2)
-          raise SystemExit(1)
+              python - <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/run.json')); status=d.get('status'); conclusion=d.get('conclusion'); url=d.get('html_url')
+          print(json.dumps({'status':status,'conclusion':conclusion,'url':url},ensure_ascii=False))
+          if status=='completed':
+              if conclusion=='success': sys.exit(0)
+              print(f'اجرای Agent شکست خورد: conclusion={conclusion} url={url}',file=sys.stderr); sys.exit(2)
           PY
-              ) || RC=$?
-              if [ "${RC:-1}" = "0" ]; then exit 0; fi
-              if [ "${RC:-1}" = "2" ]; then echo "Autonomous agent reported failure." >&2; exit 1; fi
+              RC=$?
+              if [ "$RC" = "0" ]; then exit 0; fi
+              if [ "$RC" = "2" ]; then exit 1; fi
+            else
+              echo "در انتظار دسترسی به Run عامل؛ HTTP=$CODE"
             fi
-            echo "Agent still running; attempt $i/30"
+            echo "Agent هنوز در حال اجراست؛ تلاش $i/36"
             sleep 10
           done
-          echo "Autonomous agent did not finish within the E2E timeout." >&2
+          echo "Agent در مهلت E2E کامل نشد." >&2
           exit 1
 
-      - name: Verify final project
+      - name: بررسی خروجی نهایی پروژه
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
           REPOSITORY: ${{ steps.create.outputs.repository }}
         run: |
           set -euo pipefail
           for path in site/index.html README.md agent/execution-state.json; do
-            curl -fsS \
-              -H "Authorization: Bearer ${GH_PAT}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${REPOSITORY}/contents/${path}?ref=main" >/dev/null
-            echo "verified: ${path}"
+            curl -fsS -H "Authorization: Bearer ${GH_PAT}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPOSITORY}/contents/${path}?ref=main" >/dev/null
+            echo "بررسی شد: ${path}"
           done
-          echo "E2E final project verification passed"
+          echo "بررسی نهایی پروژه E2E موفق بود."
 
-      - name: Summary
+      - name: خلاصه
         env:
           REPOSITORY_URL: ${{ steps.create.outputs.repository_url }}
           REPOSITORY: ${{ steps.create.outputs.repository }}
+          AGENT_RUN_ID: ${{ steps.create.outputs.agent_run_id }}
         run: |
-          echo "E2E project factory passed"
+          echo "تست E2E کارخانه پروژه با موفقیت کامل شد."
           echo "Repository: ${REPOSITORY}"
+          echo "Agent Run ID: ${AGENT_RUN_ID}"
           echo "URL: ${REPOSITORY_URL}"
