@@ -40,7 +40,7 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             -H "MCP-Protocol-Version: 2025-03-26" \
-            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.6"}}}' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.7"}}}' \
             "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" \
             | tee /tmp/mcp-response.txt
           grep -Eq '"result"|serverInfo|protocolVersion' /tmp/mcp-response.txt
@@ -81,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           NAME="ai-agent-e2e-${GITHUB_RUN_ID}"
-          PLAN_JSON='{"summary":"ساخت یک سایت نمایشی فارسی و راست‌چین برای آزمون کارخانه پروژه.","files":[{"path":"README.md","content":"# پروژه آزمایشی فارسی\n\nاین پروژه توسط کارخانه پروژه هوش مصنوعی برای آزمون E2E ساخته شده است.\n\nتمام محتوای این پروژه باید فارسی باشد.\n"},{"path":"index.html","content":"<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>پروژه آزمایشی فارسی</title></head><body><main><h1>پروژه آزمایشی فارسی</h1><p>این صفحه توسط عامل خودکار ساخته شده است.</p></main></body></html>"}],"commands":["python -c \"from pathlib import Path; assert Path(\\\"README.md\\\").is_file() and Path(\\\"index.html\\\").is_file(); print(\\\"آزمون فایل‌های پروژه موفق بود.\\\")\""],"language":"fa","direction":"rtl"}'
+          PLAN_JSON='{"summary":"ساخت یک سایت نمایشی فارسی و راست‌چین برای آزمون کارخانه پروژه.","done":true,"files":[{"path":"README.md","content":"# پروژه آزمایشی فارسی\n\nاین پروژه توسط کارخانه پروژه هوش مصنوعی برای آزمون E2E ساخته شده است.\n\nتمام محتوای این پروژه باید فارسی باشد.\n"},{"path":"index.html","content":"<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>پروژه آزمایشی فارسی</title></head><body><main><h1>پروژه آزمایشی فارسی</h1><p>این صفحه توسط عامل خودکار ساخته شده است.</p></main></body></html>"}],"commands":["python -c \"from pathlib import Path; assert Path(\\\"README.md\\\").is_file() and Path(\\\"index.html\\\").is_file(); print(\\\"آزمون فایل‌های پروژه موفق بود.\\\")\""],"language":"fa","direction":"rtl"}'
           python - "$NAME" "$PLAN_JSON" > /tmp/create-project-request.json <<'PY'
           import json,sys
           name=sys.argv[1]
