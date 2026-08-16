@@ -58,9 +58,31 @@ jobs:
             "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
           echo "$RESULT" | tee /tmp/mcp-result.txt
           grep -Eq 'agent-dispatched|repository|repo' /tmp/mcp-result.txt
-          URL=$(echo "$RESULT" | sed -n 's/.*\"url\":\"\([^\"]*\)\".*/\1/p' | head -1)
+
+          python - <<'PY' > /tmp/repository.txt
+          import json, re
+          raw = open('/tmp/mcp-result.txt', encoding='utf-8-sig').read()
+          matches = re.findall(r'data:\s*(\{.*\})', raw)
+          if not matches:
+              raise SystemExit('MCP returned no JSON-RPC event')
+          event = json.loads(matches[-1])
+          text = event.get('result', {}).get('content', [{}])[0].get('text', '')
+          payload = json.loads(text)
+          repository = payload.get('repository')
+          url = payload.get('url')
+          if not repository or '/' not in repository:
+              raise SystemExit(f'Invalid repository returned by MCP: {repository!r}')
+          print(repository)
+          with open('/tmp/repository-url.txt', 'w', encoding='utf-8') as f:
+              f.write(url or '')
+          PY
+
+          REPOSITORY=$(cat /tmp/repository.txt)
+          URL=$(cat /tmp/repository-url.txt)
+          echo "repository=$REPOSITORY" >> "$GITHUB_OUTPUT"
           echo "repository_url=$URL" >> "$GITHUB_OUTPUT"
-          echo "repository=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Created repository: $REPOSITORY"
+          echo "Repository URL: $URL"
 
       - name: Verify created repository
         env:
@@ -69,12 +91,13 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$GH_PAT"
+          test -n "$REPOSITORY"
           for i in $(seq 1 12); do
             CODE=$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
               -H "Authorization: Bearer ${GH_PAT}" \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/mydsoftware/${REPOSITORY}")
+              "https://api.github.com/repos/${REPOSITORY}")
             if [ "$CODE" = "200" ]; then
               cat /tmp/repo.json
               exit 0
