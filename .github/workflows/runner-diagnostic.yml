@@ -1,0 +1,33 @@
+name: Runner Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/runner-diagnostic.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  runner-test:
+    name: Test GitHub-hosted runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Runner info
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          echo "Arch: $RUNNER_ARCH"
+          uname -a
+          node --version || true
+          npm --version || true
+
+      - name: Checkout test
+        uses: actions/checkout@v4
+
+      - name: Repository test
+        run: |
+          echo "GitHub-hosted runner is operational."
+          test -f package.json && echo "package.json found" || echo "package.json not present"
