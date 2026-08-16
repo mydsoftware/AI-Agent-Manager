@@ -3,9 +3,28 @@ name: E2E Project Factory
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
       - name: بررسی اجرای دستی
-        run: echo "اجرای دستی E2E با موفقیت آغاز شد."
+        run: |
+          echo "اجرای دستی E2E با موفقیت آغاز شد."
+          echo "شناسه اجرا: $GITHUB_RUN_ID"
+
+      - name: بررسی محیط Runner
+        run: |
+          echo "سیستم عامل: $RUNNER_OS"
+          echo "معماری: $RUNNER_ARCH"
+          echo "Runner آماده است."
+
+      - name: آزمون پایه فارسی
+        run: |
+          python - <<'PY'
+          text = "کارخانه پروژه هوش مصنوعی"
+          assert text == "کارخانه پروژه هوش مصنوعی"
+          print("آزمون متن فارسی موفق بود.")
+          PY
