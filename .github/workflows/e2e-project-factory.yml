@@ -28,3 +28,20 @@ jobs:
           assert text == "کارخانه پروژه هوش مصنوعی"
           print("آزمون متن فارسی موفق بود.")
           PY
+
+      - name: آزمون اتصال MCP
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$MCP_ACCESS_TOKEN"
+          curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $MCP_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.4"}}}' \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" \
+            | tee /tmp/mcp-response.txt
+          grep -Eq '"result"|serverInfo|protocolVersion' /tmp/mcp-response.txt
+          echo "اتصال MCP و پاسخ اولیه موفق بود."
