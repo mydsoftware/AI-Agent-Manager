@@ -32,19 +32,17 @@ jobs:
       - name: بررسی TypeScript
         run: npx tsc --noEmit --allowJs false --target ES2022 --module NodeNext --moduleResolution NodeNext src/index.ts
 
-      - name: تنظیم Wrangler
-        run: npx wrangler whoami
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
       - name: بررسی Secretهای اتصال
         env:
           MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
           GH_PAT: ${{ secrets.GH_PAT }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           test -n "$MCP_ACCESS_TOKEN" || { echo "MCP_ACCESS_TOKEN تنظیم نشده است." >&2; exit 1; }
           test -n "$GH_PAT" || { echo "GH_PAT تنظیم نشده است." >&2; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN تنظیم نشده است." >&2; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID تنظیم نشده است." >&2; exit 1; }
 
       - name: تنظیم Secretهای Worker
         run: |
