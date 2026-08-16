@@ -40,7 +40,7 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             -H "MCP-Protocol-Version: 2025-03-26" \
-            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.5"}}}' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.6"}}}' \
             "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" \
             | tee /tmp/mcp-response.txt
           grep -Eq '"result"|serverInfo|protocolVersion' /tmp/mcp-response.txt
@@ -67,10 +67,48 @@ jobs:
               raise SystemExit("پاسخ فهرست ابزارهای MCP دریافت نشد.")
           data=json.loads(matches[-1])
           tools=data.get("result",{}).get("tools",[])
-          if not tools:
-              raise SystemExit("هیچ ابزار MCP در دسترس نیست.")
+          names={tool.get("name") for tool in tools}
+          if "create_project_repository" not in names:
+              raise SystemExit("ابزار ساخت Repository در MCP پیدا نشد.")
+          print("ابزار ساخت Repository پیدا شد.")
           print("تعداد ابزارهای MCP:", len(tools))
-          for tool in tools:
-              print("ابزار:", tool.get("name"), "|", tool.get("description", ""))
           PY
           echo "کشف ابزارهای MCP با موفقیت انجام شد."
+
+      - name: ساخت Repository آزمایشی با MCP
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          NAME="ai-agent-e2e-${GITHUB_RUN_ID}"
+          PLAN_JSON='{"summary":"ساخت یک سایت نمایشی فارسی و راست‌چین برای آزمون کارخانه پروژه.","files":[{"path":"README.md","content":"# پروژه آزمایشی فارسی\n\nاین پروژه توسط کارخانه پروژه هوش مصنوعی برای آزمون E2E ساخته شده است.\n\nتمام محتوای این پروژه باید فارسی باشد.\n"},{"path":"index.html","content":"<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>پروژه آزمایشی فارسی</title></head><body><main><h1>پروژه آزمایشی فارسی</h1><p>این صفحه توسط عامل خودکار ساخته شده است.</p></main></body></html>"}],"commands":["python -c \"from pathlib import Path; assert Path(\\\"README.md\\\").is_file() and Path(\\\"index.html\\\").is_file(); print(\\\"آزمون فایل‌های پروژه موفق بود.\\\")\""],"language":"fa","direction":"rtl"}'
+          python - "$NAME" "$PLAN_JSON" > /tmp/create-project-request.json <<'PY'
+          import json,sys
+          name=sys.argv[1]
+          plan=sys.argv[2]
+          payload={"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_project_repository","arguments":{"name":name,"description":"پروژه آزمایشی فارسی و راست‌چین برای آزمون E2E","request":"ساخت یک سایت نمایشی فارسی و راست‌چین. تمام README، کامنت‌ها، مستندات و محتوای سایت باید فارسی باشند.","project_type":"website","private":True,"plan_json":plan}}}
+          print(json.dumps(payload,ensure_ascii=False))
+          PY
+          curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $MCP_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data @/tmp/create-project-request.json \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" \
+            | tee /tmp/create-project-response.txt
+          python - <<'PY'
+          import json,re
+          raw=open('/tmp/create-project-response.txt',encoding='utf-8-sig').read()
+          matches=re.findall(r'data:\s*(\{.*\})',raw)
+          if not matches:
+              raise SystemExit("پاسخ ساخت Repository دریافت نشد.")
+          data=json.loads(matches[-1])
+          if "error" in data:
+              raise SystemExit("MCP در ساخت Repository خطا داد: "+json.dumps(data["error"],ensure_ascii=False))
+          result=data.get("result",{})
+          print("پاسخ ساخت Repository دریافت شد:")
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          if result.get("isError") is True:
+              raise SystemExit("ابزار ساخت Repository با خطا برگشت.")
+          PY
