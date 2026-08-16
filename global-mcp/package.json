@@ -7,11 +7,12 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
+    "@modelcontextprotocol/sdk": "1.25.2",
     "agents": "latest",
     "zod": "latest"
   },
   "devDependencies": {
+    "@types/node": "latest",
     "wrangler": "latest",
     "typescript": "latest",
     "@cloudflare/workers-types": "latest"
