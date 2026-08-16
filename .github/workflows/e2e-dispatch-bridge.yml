@@ -1,0 +1,28 @@
+name: پل اجرای یک‌باره E2E
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    if: github.event.head_commit.message == 'اجرای خودکار یک‌باره E2E برای ادامه تست'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: اجرای دستی واقعی Workflow E2E
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo "در حال اجرای Workflow اصلی E2E..."
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/e2e-project-factory.yml/dispatches" \
+            -d '{"ref":"main"}'
+          echo "Workflow اصلی E2E با موفقیت Trigger شد."
