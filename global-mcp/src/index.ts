@@ -44,6 +44,12 @@ function encodeBase64(value: string): string {
   return btoa(binary);
 }
 
+function decodeBase64(value: string): string {
+  const binary = atob(value.replace(/\s/g, ""));
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 function jsonFileContent(value: unknown): string {
   return JSON.stringify(value, null, 2) + "\n";
 }
@@ -83,23 +89,37 @@ async function putContentFile(env: Env, repository: string, path: string, conten
   });
 }
 
+async function autonomousAgentWorkflow(env: Env): Promise<string> {
+  const repository = autonomousAgentRepository(env);
+  const data = await api(env, `/repos/${repository}/contents/.github/workflows/agent.yml?ref=main`);
+  if (!data?.content) throw new Error("فایل Workflow عامل خودکار پیدا نشد.");
+  return decodeBase64(data.content as string);
+}
+
+async function ensureAutonomousAgentWorkflow(env: Env, repository: string, branch: string) {
+  const workflow = await autonomousAgentWorkflow(env);
+  await putContentFile(env, repository, ".github/workflows/agent.yml", workflow, branch);
+}
+
 async function dispatchAutonomousAgent(
   env: Env,
   payload: { target_repository: string; target_branch: string; plan: Record<string, unknown> },
 ) {
-  const repository = autonomousAgentRepository(env);
-  const [owner, repo] = repository.split("/");
-  if (!owner || !repo) throw new Error(`AUTONOMOUS_AGENT_REPO نامعتبر است: ${repository}`);
+  const [owner, repo] = payload.target_repository.split("/");
+  if (!owner || !repo) throw new Error(`target_repository نامعتبر است: ${payload.target_repository}`);
+  await ensureAutonomousAgentWorkflow(env, payload.target_repository, payload.target_branch);
   await api(env, `/repos/${owner}/${repo}/dispatches`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ event_type: "ai-agent-project", client_payload: payload }),
   });
   return {
-    repository,
+    repository: payload.target_repository,
+    agent_source_repository: autonomousAgentRepository(env),
     event_type: "ai-agent-project",
     target_repository: payload.target_repository,
     target_branch: payload.target_branch,
+    status: "dispatched-to-target-repository",
   };
 }
 
@@ -180,11 +200,11 @@ async function createProjectRepository(
 }
 
 function server(env: Env) {
-  const mcp = new McpServer({ name: "AI-Agent-Manager Global MCP", version: "1.2.1" });
+  const mcp = new McpServer({ name: "AI-Agent-Manager Global MCP", version: "1.3.0" });
 
   mcp.tool(
     "create_project_repository",
-    "ساخت Repository مستقل برای پروژه جدید، ایجاد اسکلت اولیه و در صورت ارائه Plan، اجرای خودکار آن توسط GitHub-Autonomous-Agent.",
+    "ساخت Repository مستقل برای پروژه جدید، نصب Workflow عامل خودکار و در صورت ارائه Plan، اجرای آن داخل همان Repository.",
     {
       name: z.string().min(1).max(80),
       description: z.string().min(1).max(350),
@@ -214,7 +234,7 @@ function server(env: Env) {
 
   mcp.tool(
     "run_project_agent",
-    "اجرای Plan ChatGPT روی یک Repository موجود با چرخه Build/Test/Security و ثبت تغییرات در Repository مقصد.",
+    "اجرای Plan ChatGPT روی یک Repository موجود؛ Workflow عامل خودکار در مقصد نصب و سپس repository_dispatch همان‌جا اجرا می‌شود.",
     {
       repository: z.string().regex(/^[^/]+\/[^/]+$/),
       branch: z.string().default("main"),
