@@ -1,0 +1,19 @@
+{
+  "name": "ai-agent-manager-global-mcp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "agents": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "latest",
+    "typescript": "latest",
+    "@cloudflare/workers-types": "latest"
+  }
+}
