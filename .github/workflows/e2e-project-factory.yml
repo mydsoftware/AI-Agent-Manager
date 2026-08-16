@@ -40,8 +40,37 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             -H "MCP-Protocol-Version: 2025-03-26" \
-            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.4"}}}' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.5"}}}' \
             "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" \
             | tee /tmp/mcp-response.txt
           grep -Eq '"result"|serverInfo|protocolVersion' /tmp/mcp-response.txt
           echo "اتصال MCP و پاسخ اولیه موفق بود."
+
+      - name: کشف ابزارهای MCP
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer $MCP_ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" \
+            | tee /tmp/mcp-tools.txt
+          python - <<'PY'
+          import json, re
+          raw=open('/tmp/mcp-tools.txt',encoding='utf-8-sig').read()
+          matches=re.findall(r'data:\s*(\{.*\})', raw)
+          if not matches:
+              raise SystemExit("پاسخ فهرست ابزارهای MCP دریافت نشد.")
+          data=json.loads(matches[-1])
+          tools=data.get("result",{}).get("tools",[])
+          if not tools:
+              raise SystemExit("هیچ ابزار MCP در دسترس نیست.")
+          print("تعداد ابزارهای MCP:", len(tools))
+          for tool in tools:
+              print("ابزار:", tool.get("name"), "|", tool.get("description", ""))
+          PY
+          echo "کشف ابزارهای MCP با موفقیت انجام شد."
