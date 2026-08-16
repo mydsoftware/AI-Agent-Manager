@@ -1,0 +1,94 @@
+name: E2E Project Factory
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Call deployed Global MCP
+        id: create
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          test -n "$MCP_ACCESS_TOKEN"
+          NAME="ai-agent-e2e-${RUN_ID}"
+          PLAN='{"summary":"Build a minimal Persian RTL storefront demo with HTML/CSS/JS, add basic tests, run security checks, repair blocking findings, retest, and commit the final result.","files":["site/index.html","site/styles.css","site/app.js","README.md"],"commands":["run available tests","run security checks"],"done":true}'
+          BODY=$(python - <<'PY'
+          import json, os
+          payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+              "name": "create_project_repository",
+              "arguments": {
+                "name": os.environ["NAME"],
+                "description": "Disposable E2E repository created by AI-Agent-Manager",
+                "request": "Create a minimal Persian RTL storefront demo, test it, security-check it, repair blocking issues, retest, and commit the final result.",
+                "project_type": "website",
+                "private": True,
+                "plan_json": os.environ["PLAN"],
+              },
+            },
+          }
+          print(json.dumps(payload))
+          PY
+          )
+          INIT=$(curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.0"}}}' \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
+          echo "$INIT"
+          RESULT=$(curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data "$BODY" \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
+          echo "$RESULT" | tee /tmp/mcp-result.txt
+          echo "$RESULT" | grep -q "agent-dispatched"
+          URL=$(echo "$RESULT" | sed -n 's/.*\"url\":\"\([^\"]*\)\".*/\1/p' | head -1)
+          echo "repository_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "repository=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify created repository
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_PAT"
+          for i in $(seq 1 12); do
+            CODE=$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
+              -H "Authorization: Bearer ${GH_PAT}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/mydsoftware/${REPOSITORY}")
+            if [ "$CODE" = "200" ]; then
+              cat /tmp/repo.json
+              exit 0
+            fi
+            sleep 5
+          done
+          cat /tmp/repo.json
+          exit 1
+
+      - name: Summary
+        env:
+          REPOSITORY_URL: ${{ steps.create.outputs.repository_url }}
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+        run: |
+          echo "E2E project factory passed"
+          echo "Repository: ${REPOSITORY}"
+          echo "URL: ${REPOSITORY_URL}"
