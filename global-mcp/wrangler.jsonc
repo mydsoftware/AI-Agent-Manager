@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "ai-agent-manager-global-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-15",
+  "workers_dev": true,
+  "vars": {
+    "GITHUB_OWNER": "mydsoftware",
+    "AUTONOMOUS_AGENT_REPO": "GitHub-Autonomous-Agent"
+  }
+}
