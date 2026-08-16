@@ -6,17 +6,90 @@ on:
 permissions:
   contents: read
 
-# این Workflow عمداً فقط با Run workflow اجرا می‌شود.
-# هر Commit یا Pull Request نباید آن را اجرا کند.
-
 jobs:
   e2e:
     runs-on: ubuntu-24.04
     steps:
-      - name: آماده‌سازی تست E2E
+      - name: اجرای کامل کارخانه پروژه
+        id: create
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NAME: ai-agent-e2e-${{ github.run_id }}
+          PLAN: '{"summary":"ساخت فروشگاه نمایشی فارسی و راست‌چین، اجرای آزمون‌های پایه و بررسی امنیتی و ثبت نتیجه نهایی.","files":[{"path":"site/index.html","content":"<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>فروشگاه نمونه فارسی</title><link rel=\"stylesheet\" href=\"styles.css\"></head><body><main><h1>فروشگاه نمونه فارسی</h1><p>این صفحه برای آزمون کارخانه پروژه ساخته شده است.</p><button id=\"demo\" type=\"button\">نمایش پیام</button><p id=\"message\" aria-live=\"polite\"></p></main><script src=\"app.js\"></script></body></html>\n"},{"path":"site/styles.css","content":"*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#f5f5f5;color:#222}main{max-width:720px;margin:12vh auto;padding:32px;background:#fff;border-radius:16px;text-align:right}button{padding:10px 18px;border:0;border-radius:8px;cursor:pointer}\n"},{"path":"site/app.js","content":"document.getElementById('demo').addEventListener('click',()=>{document.getElementById('message').textContent='عملیات با موفقیت انجام شد.'});\n"},{"path":"README.md","content":"# فروشگاه نمونه فارسی\n\nاین پروژه به‌صورت خودکار توسط AI-Agent-Manager ساخته شده است.\n\nتمام محتوای محصول و مستندات این نمونه فارسی و راست‌چین است.\n"}],"commands":["python -c \"from pathlib import Path; files=['site/index.html','site/styles.css','site/app.js','README.md']; assert all(Path(p).is_file() and Path(p).stat().st_size > 0 for p in files); print('آزمون فایل‌ها موفق بود.')\"","python -c \"from pathlib import Path; text=Path('site/index.html').read_text(encoding='utf-8'); assert 'lang=\\\"fa\\\"' in text and 'dir=\\\"rtl\\\"' in text; print('آزمون فارسی و راست‌چین موفق بود.')\""] ,"done":true,"language":"fa","direction":"rtl"}'
         run: |
-          echo "تست E2E فقط به‌صورت دستی اجرا شده است."
-          echo "Commit: $GITHUB_SHA"
-          echo "Run ID: $GITHUB_RUN_ID"
-      - name: وضعیت
-        run: echo "Workflow آماده اجرای دستی است."
+          set -euo pipefail
+          test -n "$MCP_ACCESS_TOKEN" && test -n "$GH_PAT"
+          BODY=$(python - <<'PY'
+          import json,os
+          p={"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_project_repository","arguments":{"name":os.environ["NAME"],"description":"مخزن موقت آزمون سراسری AI-Agent-Manager","request":"یک فروشگاه نمایشی فارسی و راست‌چین بساز، آزمون‌های پایه و بررسی امنیتی را اجرا کن و نتیجه نهایی را ثبت کن.","project_type":"website","private":True,"plan_json":os.environ["PLAN"]}}}
+          print(json.dumps(p,ensure_ascii=False))
+          PY
+          )
+          curl -fsS --retry 3 --retry-all-errors -H "Authorization: Bearer $MCP_ACCESS_TOKEN" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "MCP-Protocol-Version: 2025-03-26" --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-E2E","version":"1.3"}}}' https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp >/tmp/mcp-init.txt
+          curl -fsS --retry 3 --retry-all-errors -H "Authorization: Bearer $MCP_ACCESS_TOKEN" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -H "MCP-Protocol-Version: 2025-03-26" --data "$BODY" https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp | tee /tmp/mcp-result.txt
+          python - <<'PY'
+          import json,re
+          raw=open('/tmp/mcp-result.txt',encoding='utf-8-sig').read(); m=re.findall(r'data:\s*(\{.*\})',raw)
+          if not m: raise SystemExit('پاسخ JSON-RPC از MCP دریافت نشد')
+          e=json.loads(m[-1]); text=e.get('result',{}).get('content',[{}])[0].get('text',''); p=json.loads(text)
+          if p.get('status') not in {'agent-started','completed'}: raise SystemExit(f'Agent شروع نشد: {p}')
+          repo=p.get('repository'); url=p.get('url'); run=p.get('execution',{}).get('workflow_run_id')
+          if not repo or not run: raise SystemExit(f'اطلاعات اجرای Agent ناقص است: {p}')
+          open('/tmp/repository','w').write(repo); open('/tmp/url','w').write(url or ''); open('/tmp/run','w').write(str(run))
+          print(json.dumps(p,ensure_ascii=False,indent=2))
+          PY
+          echo "repository=$(cat /tmp/repository)" >> "$GITHUB_OUTPUT"
+          echo "repository_url=$(cat /tmp/url)" >> "$GITHUB_OUTPUT"
+          echo "agent_run_id=$(cat /tmp/run)" >> "$GITHUB_OUTPUT"
+
+      - name: انتظار برای نتیجه واقعی Agent
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+          AGENT_RUN_ID: ${{ steps.create.outputs.agent_run_id }}
+        run: |
+          set -u
+          for i in $(seq 1 36); do
+            code=$(curl -sS -o /tmp/run.json -w '%{http_code}' -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPOSITORY/actions/runs/$AGENT_RUN_ID") || code=000
+            if [ "$code" = 200 ]; then
+              python - <<'PY'
+          import json
+          d=json.load(open('/tmp/run.json')); print('وضعیت Agent:',d.get('status'),'نتیجه:',d.get('conclusion'))
+          print('نشانی:',d.get('html_url'))
+          if d.get('status')=='completed':
+              raise SystemExit(0 if d.get('conclusion')=='success' else 2)
+          raise SystemExit(1)
+          PY
+              rc=$?
+              [ "$rc" = 0 ] && exit 0
+              [ "$rc" = 2 ] && { echo 'Agent با شکست واقعی پایان یافت.' >&2; exit 1; }
+            fi
+            echo "Agent هنوز در حال اجراست؛ تلاش $i/36"
+            sleep 10
+          done
+          echo 'مهلت انتظار Agent تمام شد.' >&2
+          exit 1
+
+      - name: بررسی فایل‌های نهایی
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+        run: |
+          set -euo pipefail
+          for path in site/index.html site/styles.css site/app.js README.md agent/execution-state.json; do
+            curl -fsS -H "Authorization: Bearer $GH_PAT" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPOSITORY/contents/$path?ref=main" >/dev/null
+            echo "بررسی شد: $path"
+          done
+          echo 'بررسی نهایی E2E موفق بود.'
+
+      - name: خلاصه فارسی
+        env:
+          REPOSITORY: ${{ steps.create.outputs.repository }}
+          REPOSITORY_URL: ${{ steps.create.outputs.repository_url }}
+          AGENT_RUN_ID: ${{ steps.create.outputs.agent_run_id }}
+        run: |
+          echo "اجرای کامل E2E با موفقیت پایان یافت."
+          echo "Repository: $REPOSITORY"
+          echo "Agent Run ID: $AGENT_RUN_ID"
+          echo "نشانی: $REPOSITORY_URL"
