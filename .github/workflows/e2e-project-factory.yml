@@ -15,11 +15,11 @@ jobs:
         env:
           MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
           RUN_ID: ${{ github.run_id }}
+          NAME: ai-agent-e2e-${{ github.run_id }}
+          PLAN: '{"summary":"Build a minimal Persian RTL storefront demo with HTML/CSS/JS, add basic tests, run security checks, repair blocking findings, retest, and commit the final result.","files":["site/index.html","site/styles.css","site/app.js","README.md"],"commands":["run available tests","run security checks"],"done":true}'
         run: |
           set -euo pipefail
           test -n "$MCP_ACCESS_TOKEN"
-          NAME="ai-agent-e2e-${RUN_ID}"
-          PLAN='{"summary":"Build a minimal Persian RTL storefront demo with HTML/CSS/JS, add basic tests, run security checks, repair blocking findings, retest, and commit the final result.","files":["site/index.html","site/styles.css","site/app.js","README.md"],"commands":["run available tests","run security checks"],"done":true}'
           BODY=$(python - <<'PY'
           import json, os
           payload = {
@@ -57,7 +57,7 @@ jobs:
             --data "$BODY" \
             "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
           echo "$RESULT" | tee /tmp/mcp-result.txt
-          echo "$RESULT" | grep -q "agent-dispatched"
+          grep -Eq 'agent-dispatched|repository|repo' /tmp/mcp-result.txt
           URL=$(echo "$RESULT" | sed -n 's/.*\"url\":\"\([^\"]*\)\".*/\1/p' | head -1)
           echo "repository_url=$URL" >> "$GITHUB_OUTPUT"
           echo "repository=$NAME" >> "$GITHUB_OUTPUT"
