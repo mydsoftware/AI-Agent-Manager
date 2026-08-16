@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  GLOBAL_MCP_URL: https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
@@ -59,3 +62,19 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: تست Health و اعلام URL
+        run: |
+          echo "Global MCP URL: $GLOBAL_MCP_URL"
+          echo "Health endpoint: $GLOBAL_MCP_URL/health"
+          for i in 1 2 3 4 5; do
+            response=$(curl -fsS --max-time 15 "$GLOBAL_MCP_URL/health" 2>/dev/null) && {
+              echo "Health check: OK"
+              echo "Response: $response"
+              exit 0
+            }
+            echo "Health check attempt $i failed; retrying..."
+            sleep 5
+          done
+          echo "Health check failed after 5 attempts." >&2
+          exit 1
