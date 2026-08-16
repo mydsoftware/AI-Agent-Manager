@@ -15,6 +15,7 @@ class GitHubClient(Protocol):
     def get_repository(self, repository: str) -> Any: ...
     def get_file(self, repository: str, path: str, ref: str | None = None) -> Any: ...
     def put_file(self, repository: str, path: str, content: str, message: str, branch: str, sha: str | None = None) -> Any: ...
+    def create_repository(self, owner: str, name: str, description: str = "", private: bool = True, auto_init: bool = True) -> Any: ...
     def create_branch(self, repository: str, branch: str, base: str) -> Any: ...
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any: ...
     def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any: ...
@@ -24,13 +25,12 @@ class GitHubAPIClient:
     """کلاینت سبک GitHub REST API بدون وابستگی خارجی."""
 
     def __init__(self, token: str | None = None, api_url: str = "https://api.github.com") -> None:
-        self.token = token or os.getenv("GITHUB_TOKEN")
+        self.token = token or os.getenv("GITHUB_TOKEN") or os.getenv("GH_PAT")
         self.api_url = api_url.rstrip("/")
 
     def _request(self, method: str, path: str, payload: dict | None = None) -> Any:
-        """درخواست احراز هویت‌شده‌ای به GitHub ارسال می‌کند."""
         if not self.token:
-            raise RuntimeError("GITHUB_TOKEN تنظیم نشده است.")
+            raise RuntimeError("GITHUB_TOKEN یا GH_PAT تنظیم نشده است.")
         headers = {
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {self.token}",
@@ -58,6 +58,23 @@ class GitHubAPIClient:
         if sha:
             payload["sha"] = sha
         return self._request("PUT", f"/repos/{repository}/contents/{path}", payload)
+
+    def create_repository(self, owner: str, name: str, description: str = "", private: bool = True, auto_init: bool = True) -> Any:
+        """Repository جدید را در حساب کاربری احراز‌شده می‌سازد."""
+        result = self._request("POST", "/user/repos", {
+            "name": name,
+            "description": description[:350],
+            "private": private,
+            "auto_init": auto_init,
+            "has_issues": True,
+            "has_projects": False,
+            "has_wiki": False,
+            "has_discussions": False,
+        })
+        actual_owner = result.get("owner", {}).get("login")
+        if owner and actual_owner != owner:
+            raise RuntimeError(f"Repository با مالک مورد انتظار ساخته نشد: {result.get('full_name')}")
+        return result
 
     def create_branch(self, repository: str, branch: str, base: str) -> Any:
         base_ref = self._request("GET", f"/repos/{repository}/git/ref/heads/{base}")
@@ -90,6 +107,9 @@ class GitHubAdapter:
 
     def put_file(self, repository: str, path: str, content: str, message: str, branch: str, sha: str | None = None) -> Any:
         return self.client.put_file(repository, path, content, message, branch, sha)
+
+    def create_repository(self, owner: str, name: str, description: str = "", private: bool = True, auto_init: bool = True) -> Any:
+        return self.client.create_repository(owner, name, description, private, auto_init)
 
     def create_branch(self, repository: str, branch: str, base: str) -> Any:
         return self.client.create_branch(repository, branch, base)
