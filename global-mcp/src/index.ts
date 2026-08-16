@@ -15,7 +15,7 @@ const api = async (env: Env, path: string, init: RequestInit = {}) => {
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-      "X-GitHub-Api-Version": "2022-11-28",
+      "X-GitHub-Api-Version": "2026-03-10",
       "User-Agent": "AI-Agent-Manager-Global-MCP",
       ...(init.headers || {}),
     },
@@ -52,12 +52,42 @@ function jsonFileContent(value: unknown): string {
   return JSON.stringify(value, null, 2) + "\n";
 }
 
+function parsePlan(value: string | undefined): Record<string, unknown> | null {
+  if (!value?.trim()) return null;
+  const parsed = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("plan_json باید یک شیء JSON باشد.");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+async function dispatchAutonomousAgent(
+  env: Env,
+  payload: { target_repository: string; target_branch: string; plan: Record<string, unknown> },
+) {
+  const repository = env.AUTONOMOUS_AGENT_REPO || "mydsoftware/GitHub-Autonomous-Agent";
+  const [owner, repo] = repository.split("/");
+  if (!owner || !repo) throw new Error(`AUTONOMOUS_AGENT_REPO نامعتبر است: ${repository}`);
+
+  await api(env, `/repos/${owner}/${repo}/dispatches`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      event_type: "ai-agent-project",
+      client_payload: payload,
+    }),
+  });
+
+  return { repository, event_type: "ai-agent-project", target_repository: payload.target_repository, target_branch: payload.target_branch };
+}
+
 async function createProjectRepository(env: Env, input: {
   name: string;
   description: string;
   private: boolean;
   request: string;
   projectType: string;
+  planJson?: string;
 }) {
   const baseName = slugify(input.name);
   const name = `${baseName}-${Date.now().toString().slice(-6)}`;
@@ -104,11 +134,21 @@ async function createProjectRepository(env: Env, input: {
     await api(env, `/repos/${repository}/contents/${path}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message: `feat: initialize ${path}`,
-        content: encodeBase64(content),
-        branch,
-      }),
+      body: JSON.stringify({ message: `feat: initialize ${path}`, content: encodeBase64(content), branch }),
+    });
+  }
+
+  let execution: Record<string, unknown> | null = null;
+  const plan = parsePlan(input.planJson);
+  if (plan) {
+    execution = await dispatchAutonomousAgent(env, {
+      target_repository: repository,
+      target_branch: branch,
+      plan: {
+        ...plan,
+        summary: plan.summary || input.request,
+        done: plan.done ?? true,
+      },
     });
   }
 
@@ -118,39 +158,51 @@ async function createProjectRepository(env: Env, input: {
     clone_url: repo.clone_url,
     branch,
     project_type: input.projectType,
-    status: "created",
+    status: execution ? "agent-dispatched" : "created",
     files: Object.keys(files),
+    execution,
   };
 }
 
 function server(env: Env) {
-  const mcp = new McpServer({ name: "AI-Agent-Manager Global", version: "1.1.0" });
+  const mcp = new McpServer({ name: "AI-Agent-Manager Global MCP", version: "1.2.0" });
 
   mcp.tool(
     "create_project_repository",
-    "ساخت یک Repository مستقل برای پروژه جدید و ایجاد اسکلت اولیه آن.",
+    "ساخت Repository مستقل برای پروژه جدید، ایجاد اسکلت اولیه و در صورت ارائه Plan، اجرای خودکار آن توسط GitHub-Autonomous-Agent.",
     {
       name: z.string().min(1).max(80),
       description: z.string().min(1).max(350),
       request: z.string().min(1),
       project_type: z.enum(["html", "website", "web", "software", "wordpress", "python", "other"]).default("website"),
       private: z.boolean().default(true),
+      plan_json: z.string().optional().describe("Plan JSON تولیدشده توسط ChatGPT شامل summary/files/commands/done"),
     },
-    async ({ name, description, request, project_type, private: isPrivate }) => {
-      const result = await createProjectRepository(env, {
-        name,
-        description,
-        request,
-        projectType: project_type,
-        private: isPrivate,
-      });
+    async ({ name, description, request, project_type, private: isPrivate, plan_json }) => {
+      const result = await createProjectRepository(env, { name, description, request, projectType: project_type, private: isPrivate, planJson: plan_json });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  mcp.tool(
+    "run_project_agent",
+    "اجرای Plan ChatGPT روی یک Repository موجود با چرخه Build/Test/Security و ثبت تغییرات در Repository مقصد.",
+    {
+      repository: z.string().regex(/^[^/]+\/[^/]+$/),
+      branch: z.string().default("main"),
+      plan_json: z.string().min(2).describe("Plan JSON تولیدشده توسط ChatGPT"),
+    },
+    async ({ repository, branch, plan_json }) => {
+      const plan = parsePlan(plan_json);
+      if (!plan) throw new Error("plan_json الزامی است.");
+      const result = await dispatchAutonomousAgent(env, { target_repository: repository, target_branch: branch, plan });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
 
   mcp.tool(
     "submit_project_request",
-    "ارسال درخواست پروژه از ChatGPT به GitHub-Autonomous-Agent.",
+    "ثبت درخواست عمومی پروژه در GitHub-Autonomous-Agent.",
     {
       request: z.string().min(1),
       repository: z.string().default("mydsoftware/GitHub-Autonomous-Agent"),
