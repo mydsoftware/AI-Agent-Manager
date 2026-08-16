@@ -1,0 +1,76 @@
+name: اجرای پروژه واقعی فارسی
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: اجرای عامل ساخت پروژه فارسی
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+          NAME: پروژه-فروشگاه-فارسی-${{ github.run_id }}
+          PLAN: '{"summary":"یک فروشگاه اینترنتی واقعی و کامل فارسی و راست‌به‌چپ بساز. زبان تمام خروجی‌های کاربر فارسی باشد.","language":"fa-IR","direction":"rtl","rules":["تمام متن‌های صفحات سایت فارسی باشند","تمام عنوان‌ها، منوها، دکمه‌ها، فرم‌ها، پیام‌های خطا و اعلان‌ها فارسی باشند","README و مستندات فارسی باشند","تمام کامنت‌های کد فارسی باشند","پیام‌های تست و گزارش اجرای عامل فارسی باشند","Commit messageها فارسی باشند","هیچ متن انگلیسی غیرضروری در محصول نهایی باقی نماند","نام پکیج‌ها، APIها، کلیدهای استاندارد، دستورات CLI و مواردی که الزام فنی دارند می‌توانند انگلیسی بمانند"],"features":["صفحه اصلی","فروشگاه","دسته‌بندی محصولات","صفحه جزئیات محصول","جستجو","سبد خرید","منوی موبایل","طراحی واکنش‌گرا","دسترسی‌پذیری","رابط کاربری مدرن"],"engineering":["ساختار تمیز و ماژولار","اجرای تست‌ها","اجرای بررسی‌های امنیتی","رفع خودکار خطاهای مسدودکننده","اجرای دوباره تست‌ها پس از اصلاح","ثبت نتیجه نهایی در Repository"],"autonomous":true,"done":true}'
+        run: |
+          set -euo pipefail
+          test -n "$MCP_ACCESS_TOKEN"
+          BODY=$(python - <<'PY'
+          import json, os
+          payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+              "name": "create_project_repository",
+              "arguments": {
+                "name": os.environ["NAME"],
+                "description": "پروژه واقعی فروشگاه اینترنتی فارسی و راست‌به‌چپ که به‌صورت مستقل توسط عامل ساخته، آزمایش و اصلاح می‌شود.",
+                "request": "یک پروژه واقعی فروشگاه اینترنتی فارسی بساز. همه محتوای قابل مشاهده، README، مستندات، کامنت‌ها، پیام‌های تست و گزارش‌ها فارسی باشند. پروژه را کامل کن، تست کن، بررسی امنیتی انجام بده، خطاها را خودکار اصلاح کن، دوباره تست کن و نتیجه نهایی را Commit کن. بدون درخواست تأیید بین مراحل ادامه بده.",
+                "project_type": "website",
+                "private": True,
+                "plan_json": os.environ["PLAN"]
+              }
+            }
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          PY
+          )
+          curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"AI-Agent-Manager-Persian-E2E","version":"1.0"}}}' \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp" >/tmp/initialize.txt
+          RESULT=$(curl -fsS --retry 3 --retry-all-errors \
+            -H "Authorization: Bearer ${MCP_ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "MCP-Protocol-Version: 2025-03-26" \
+            --data "$BODY" \
+            "https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev/mcp")
+          echo "$RESULT" | tee /tmp/mcp-result.txt
+          grep -Eq 'dispatched-to-target-repository|repository|repo' /tmp/mcp-result.txt
+          python - <<'PY'
+          import json, re
+          raw=open('/tmp/mcp-result.txt',encoding='utf-8-sig').read()
+          matches=re.findall(r'data:\s*(\{.*\})',raw)
+          if not matches:
+              raise SystemExit('عامل فارسی پاسخ JSON-RPC معتبری برنگرداند.')
+          event=json.loads(matches[-1])
+          text=event.get('result',{}).get('content',[{}])[0].get('text','')
+          data=json.loads(text)
+          repo=data.get('repository')
+          url=data.get('url','')
+          if not repo or '/' not in repo:
+              raise SystemExit(f'Repository نامعتبر: {repo!r}')
+          print(f'پروژه فارسی ساخته شد: {repo}')
+          print(f'نشانی پروژه: {url}')
+          PY
