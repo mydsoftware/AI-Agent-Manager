@@ -1,0 +1,22 @@
+name: Runner Smoke Test
+
+on:
+  push:
+    paths:
+      - ".github/workflows/runner-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Runner check
+        run: |
+          echo "GitHub Actions runner started successfully"
+          uname -a
+          node --version
+          npm --version
