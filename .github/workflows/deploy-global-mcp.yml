@@ -1,0 +1,56 @@
+name: Deploy Global ChatGPT MCP
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "global-mcp/**"
+      - ".github/workflows/deploy-global-mcp.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: global-mcp
+    steps:
+      - name: دریافت پروژه
+        uses: actions/checkout@v4
+
+      - name: آماده‌سازی Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: global-mcp/package-lock.json
+
+      - name: نصب وابستگی‌ها
+        run: npm install
+
+      - name: بررسی TypeScript
+        run: npx tsc --noEmit --allowJs false --target ES2022 --module NodeNext --moduleResolution NodeNext src/index.ts
+
+      - name: تنظیم Wrangler
+        run: npx wrangler whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: تنظیم Secretهای Worker
+        run: |
+          printf '%s' "$MCP_ACCESS_TOKEN" | npx wrangler secret put MCP_ACCESS_TOKEN
+          printf '%s' "$GITHUB_TOKEN" | npx wrangler secret put GITHUB_TOKEN
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Deploy
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
