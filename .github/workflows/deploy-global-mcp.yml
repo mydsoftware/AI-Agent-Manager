@@ -24,8 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: global-mcp/package-lock.json
 
       - name: نصب وابستگی‌ها
         run: npm install
@@ -38,6 +36,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: بررسی Secretهای اتصال
+        env:
+          MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          test -n "$MCP_ACCESS_TOKEN" || { echo "MCP_ACCESS_TOKEN تنظیم نشده است." >&2; exit 1; }
+          test -n "$GH_PAT" || { echo "GH_PAT تنظیم نشده است." >&2; exit 1; }
 
       - name: تنظیم Secretهای Worker
         run: |
