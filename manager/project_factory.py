@@ -16,21 +16,31 @@ class ProjectCreationResult:
     project_type: str
     files: list[str]
     status: str = "created"
+    execution: dict[str, Any] | None = None
 
 
 class ProjectRepositoryFactory:
-    """ساخت Repository مستقل و اسکلت اولیه پروژه برای هر درخواست جدید."""
+    """ساخت Repository مستقل و در صورت وجود Plan، ارسال آن به Agent اجرایی."""
 
     def __init__(self, client: GitHubAPIClient | None = None, owner: str | None = None) -> None:
         self.client = client or GitHubAPIClient()
         self.owner = owner or os.getenv("GITHUB_OWNER", "mydsoftware")
+        self.autonomous_agent_repo = os.getenv("AUTONOMOUS_AGENT_REPO", "mydsoftware/GitHub-Autonomous-Agent")
 
     @staticmethod
     def _slug(value: str) -> str:
         slug = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")[:45]
         return slug or "ai-project"
 
-    def create(self, name: str, description: str, request: str, project_type: str = "website", private: bool = True) -> ProjectCreationResult:
+    def create(
+        self,
+        name: str,
+        description: str,
+        request: str,
+        project_type: str = "website",
+        private: bool = True,
+        plan: dict[str, Any] | None = None,
+    ) -> ProjectCreationResult:
         base_name = self._slug(name)
         repo = self.client.create_repository(
             owner=self.owner,
@@ -63,7 +73,21 @@ class ProjectRepositoryFactory:
         for path, content in files.items():
             self.client.put_file(repository, path, content, f"feat: initialize {path}", branch)
 
-        return ProjectCreationResult(repository, repo["html_url"], branch, project_type, list(files))
+        execution = None
+        status = "created"
+        if plan is not None:
+            execution = self.client.repository_dispatch(
+                self.autonomous_agent_repo,
+                "ai-agent-project",
+                {
+                    "target_repository": repository,
+                    "target_branch": branch,
+                    "plan": plan,
+                },
+            )
+            status = "agent-dispatched"
+
+        return ProjectCreationResult(repository, repo["html_url"], branch, project_type, list(files), status, execution)
 
     @staticmethod
     def _json(value: Any) -> str:
