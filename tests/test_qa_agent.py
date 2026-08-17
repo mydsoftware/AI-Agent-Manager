@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import json
 
+from ai_gateway import AIResponse, AIGateway
 from agents.qa_agent import QAAgent
 from agents.registry import create_default_registry
 from manager.task import Task
 
 
-def test_qa_agent_builds_engineering_plan():
+def fake_ai_complete(request, preferred=None):
+    return AIResponse(
+        content="تحلیل آزمایشی QA برای CI",
+        provider=preferred or "test",
+        model="test-model",
+    )
+
+
+def test_qa_agent_builds_engineering_plan(monkeypatch):
+    monkeypatch.setattr(AIGateway, "complete", fake_ai_complete)
     task = Task(
         id="qa-1",
         title="اجرای تست",
@@ -23,6 +33,7 @@ def test_qa_agent_builds_engineering_plan():
     assert result["valid"] is True
     assert result["engineering_loop"] is True
     assert result["test_command"] == "pytest -q"
+    assert result["ai_provider"] == "freellmapi"
 
 
 def test_qa_agent_rejects_incomplete_task():
