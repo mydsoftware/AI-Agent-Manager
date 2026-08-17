@@ -16,6 +16,13 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
         self.api_key = api_key
         self.timeout = timeout
 
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
     def _payload(self, req: AIRequest) -> dict:
         payload = {
             "model": req.model,
@@ -36,11 +43,7 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
             endpoint,
             data=body,
             method="POST",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            headers=self._headers(),
         )
         try:
             with request.urlopen(http_request, timeout=self.timeout) as response:
@@ -65,6 +68,21 @@ class OpenAICompatibleAdapter(AIProviderAdapter):
 
     def health(self) -> bool:
         return bool(self.base_url and self.api_key)
+
+    def probe(self) -> bool:
+        """به endpoint استاندارد مدل‌ها درخواست GET می‌زند؛ هیچ inference مصرف نمی‌کند."""
+        if not self.health():
+            return False
+        http_request = request.Request(
+            f"{self.base_url}/models",
+            method="GET",
+            headers=self._headers(),
+        )
+        try:
+            with request.urlopen(http_request, timeout=min(self.timeout, 15.0)) as response:
+                return 200 <= response.status < 300
+        except (error.URLError, error.HTTPError, TimeoutError):
+            return False
 
 
 def from_environment() -> tuple[OpenAICompatibleAdapter, OpenAICompatibleAdapter]:
