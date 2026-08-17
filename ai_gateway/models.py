@@ -48,4 +48,9 @@ class AIProviderAdapter:
         raise NotImplementedError
 
     def health(self) -> bool:
+        """بررسی سریع پیکربندی محلی؛ بدون تماس شبکه."""
+        raise NotImplementedError
+
+    def probe(self) -> bool:
+        """بررسی واقعی دسترسی به Gateway؛ برای Integration/Observability."""
         raise NotImplementedError
