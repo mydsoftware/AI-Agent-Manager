@@ -37,4 +37,9 @@ class AIGateway:
         raise AIProviderError("هیچ Gateway قابل استفاده‌ای پاسخ نداد: " + " | ".join(errors))
 
     def health(self) -> dict[str, bool]:
+        """وضعیت پیکربندی را بدون تماس شبکه گزارش می‌کند."""
         return {name: adapter.health() for name, adapter in self.adapters.items()}
+
+    def probe(self) -> dict[str, bool]:
+        """سلامت واقعی Gatewayها را با endpoint /models بررسی می‌کند."""
+        return {name: adapter.probe() for name, adapter in self.adapters.items()}
