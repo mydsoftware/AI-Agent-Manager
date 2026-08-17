@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ai_gateway import AIGateway, AIMessage, AIRequest
 from manager.task import Task
 from .base_agent import BaseAgent
 
@@ -10,5 +11,10 @@ class ResearchAgent(BaseAgent):
     name = "research"
 
     def run(self, task: Task) -> str:
-        """در نسخه اولیه، اجرای تحقیق را به محیط میزبان واگذار می‌کند."""
-        return f"وظیفه تحقیق دریافت شد: {task.id}"
+        """تحقیق را از طریق Gateway مستقل OmniRoute/FreeLLMAPI اجرا می‌کند."""
+        gateway = AIGateway()
+        response = gateway.complete(AIRequest(messages=[
+            AIMessage(role="system", content="تو ایجنت تحقیق فارسی هستی. پاسخ دقیق، مستند و خلاصه ارائه کن."),
+            AIMessage(role="user", content=task.description),
+        ]))
+        return response.content
