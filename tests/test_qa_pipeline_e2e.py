@@ -31,7 +31,7 @@ class FakeExecutor:
         return [json.dumps({"state": "done", "attempts": 1, "ci_status": "success", "error": None})]
 
 
-def fake_ai_complete(request, preferred=None):
+def fake_ai_complete(self, request, preferred=None):
     return AIResponse(
         content="تحلیل آزمایشی QA برای آزمون انتها‌به‌انتها",
         provider=preferred or "test",
