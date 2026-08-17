@@ -1,0 +1,40 @@
+name: «آزمون یکپارچه Gatewayهای واقعی»
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    name: «OmniRoute + FreeLLMAPI»
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OMNIROUTE_BASE_URL: ${{ secrets.OMNIROUTE_BASE_URL }}
+      OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      OMNIROUTE_MODEL: ${{ secrets.OMNIROUTE_MODEL }}
+      FREELLMAPI_BASE_URL: ${{ secrets.FREELLMAPI_BASE_URL }}
+      FREELLMAPI_API_KEY: ${{ secrets.FREELLMAPI_API_KEY }}
+      FREELLMAPI_MODEL: ${{ secrets.FREELLMAPI_MODEL }}
+      AI_INTEGRATION_MODEL: ${{ secrets.AI_INTEGRATION_MODEL }}
+
+    steps:
+      - name: «دریافت کد پروژه»
+        uses: actions/checkout@v4
+
+      - name: «آماده‌سازی Python»
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: «نصب وابستگی‌ها»
+        run: pip install -e '.[dev]'
+
+      - name: «بررسی تنظیمات Gatewayها»
+        run: |
+          test -n "$OMNIROUTE_BASE_URL" || { echo 'OMNIROUTE_BASE_URL تنظیم نشده است'; exit 1; }
+          test -n "$OMNIROUTE_API_KEY" || { echo 'OMNIROUTE_API_KEY تنظیم نشده است'; exit 1; }
+          test -n "$FREELLMAPI_BASE_URL" || { echo 'FREELLMAPI_BASE_URL تنظیم نشده است'; exit 1; }
+          test -n "$FREELLMAPI_API_KEY" || { echo 'FREELLMAPI_API_KEY تنظیم نشده است'; exit 1; }
+
+      - name: «اجرای تست‌های یکپارچه واقعی»
+        run: pytest -q tests/integration/test_real_ai_gateways.py -m integration
