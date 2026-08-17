@@ -5,7 +5,7 @@ from agents.developer_agent import DeveloperAgent
 from manager.task import Task
 
 
-def fake_ai_complete(request, preferred=None):
+def fake_ai_complete(self, request, preferred=None):
     return AIResponse(
         content="تحلیل آزمایشی توسعه برای CI",
         provider=preferred or "test",
