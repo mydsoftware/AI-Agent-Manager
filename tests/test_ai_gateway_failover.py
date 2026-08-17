@@ -13,14 +13,27 @@ from ai_gateway.models import (
 
 
 class FakeAdapter(AIProviderAdapter):
-    def __init__(self, name: str, *, healthy: bool = True, failure: bool = False) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        healthy: bool = True,
+        probe_ok: bool = True,
+        failure: bool = False,
+    ) -> None:
         self.name = name
         self.healthy = healthy
+        self.probe_ok = probe_ok
         self.failure = failure
         self.calls = 0
+        self.probe_calls = 0
 
     def health(self) -> bool:
         return self.healthy
+
+    def probe(self) -> bool:
+        self.probe_calls += 1
+        return self.probe_ok
 
     def complete(self, request: AIRequest) -> AIResponse:
         self.calls += 1
@@ -94,3 +107,15 @@ def test_all_gateways_failed_returns_controlled_error() -> None:
 
     with pytest.raises(AIProviderError, match="هیچ Gateway قابل استفاده‌ای"):
         gateway.complete(make_request())
+
+
+def test_probe_reports_real_gateway_reachability() -> None:
+    omni = FakeAdapter("omniroute", probe_ok=True)
+    free = FakeAdapter("freellmapi", probe_ok=False)
+    gateway = AIGateway([omni, free])
+
+    status = gateway.probe()
+
+    assert status == {"omniroute": True, "freellmapi": False}
+    assert omni.probe_calls == 1
+    assert free.probe_calls == 1
