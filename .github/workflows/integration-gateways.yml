@@ -36,5 +36,18 @@ jobs:
           test -n "$FREELLMAPI_BASE_URL" || { echo 'FREELLMAPI_BASE_URL تنظیم نشده است'; exit 1; }
           test -n "$FREELLMAPI_API_KEY" || { echo 'FREELLMAPI_API_KEY تنظیم نشده است'; exit 1; }
 
+      - name: «Probe سلامت واقعی Gatewayها»
+        run: |
+          python - <<'PY'
+          from ai_gateway import AIGateway
+
+          status = AIGateway().probe()
+          print("=== Gateway Health ===")
+          for name, healthy in sorted(status.items()):
+              print(f"{name}: {'OK' if healthy else 'UNREACHABLE'}")
+          if not any(status.values()):
+              raise SystemExit("هیچ Gateway قابل دسترسی نیست")
+          PY
+
       - name: «اجرای تست‌های یکپارچه واقعی»
         run: pytest -q tests/integration/test_real_ai_gateways.py -m integration
