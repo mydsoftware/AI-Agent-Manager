@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from ai_gateway import AIResponse, AIGateway
 from agents.qa_agent import QAAgent
 from manager.application import ManagerApplication
 from manager.task import Task
@@ -30,6 +31,14 @@ class FakeExecutor:
         return [json.dumps({"state": "done", "attempts": 1, "ci_status": "success", "error": None})]
 
 
+def fake_ai_complete(request, preferred=None):
+    return AIResponse(
+        content="تحلیل آزمایشی QA برای آزمون انتها‌به‌انتها",
+        provider=preferred or "test",
+        model="test-model",
+    )
+
+
 def test_manager_routes_qa_into_engineering_loop():
     app = ManagerApplication()
     fake = FakeExecutor()
@@ -52,7 +61,8 @@ def test_manager_routes_qa_into_engineering_loop():
     assert [item.agent for item in fake.tasks] == ["qa", "github-project"]
 
 
-def test_qa_agent_still_produces_valid_plan():
+def test_qa_agent_still_produces_valid_plan(monkeypatch):
+    monkeypatch.setattr(AIGateway, "complete", fake_ai_complete)
     task = Task(
         id="qa-plan",
         title="برنامه QA",
