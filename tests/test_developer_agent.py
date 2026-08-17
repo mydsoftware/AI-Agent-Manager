@@ -1,9 +1,20 @@
-from manager.task import Task
-from agents.developer_agent import DeveloperAgent
 import json
 
+from ai_gateway import AIResponse, AIGateway
+from agents.developer_agent import DeveloperAgent
+from manager.task import Task
 
-def test_developer_agent_builds_engineering_plan():
+
+def fake_ai_complete(request, preferred=None):
+    return AIResponse(
+        content="تحلیل آزمایشی توسعه برای CI",
+        provider=preferred or "test",
+        model="test-model",
+    )
+
+
+def test_developer_agent_builds_engineering_plan(monkeypatch):
+    monkeypatch.setattr(AIGateway, "complete", fake_ai_complete)
     task = Task(
         id="dev-1",
         title="تغییر کد",
@@ -17,6 +28,8 @@ def test_developer_agent_builds_engineering_plan():
     result = json.loads(DeveloperAgent().run(task))
     assert result["type"] == "development_plan"
     assert result["engineering_loop"] is True
+    assert result["ai_provider"] == "omniroute"
+    assert result["ai_model"] == "test-model"
 
 
 def test_developer_agent_handles_incomplete_task():
