@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from ai_gateway import AIResponse, AIGateway
 from agents.developer_agent import DeveloperAgent
 from agents.github_project_agent import GitHubProjectAgent
 from manager.engineering_loop import EngineeringLoop
@@ -25,7 +26,16 @@ class FakeGitHubAgent:
         return json.dumps({"ok": True, "action": action})
 
 
-def test_developer_plan_reaches_engineering_loop_and_pr():
+def fake_ai_complete(request, preferred=None):
+    return AIResponse(
+        content="تحلیل آزمایشی توسعه برای آزمون انتها‌به‌انتها",
+        provider=preferred or "test",
+        model="test-model",
+    )
+
+
+def test_developer_plan_reaches_engineering_loop_and_pr(monkeypatch):
+    monkeypatch.setattr(AIGateway, "complete", fake_ai_complete)
     task = Task(
         id="e2e-1",
         title="اجرای تغییر آزمایشی",
