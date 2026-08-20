@@ -7,6 +7,8 @@ on:
         description: "مسیر فایل درخواست در agent_requests"
         required: true
         type: string
+  repository_dispatch:
+    types: [execute-agent]
   push:
     paths:
       - "agent_requests/*.json"
@@ -44,6 +46,9 @@ jobs:
         shell: bash
         run: |
           REQUEST_FILE="${{ inputs.request_file }}"
+          if [ -z "$REQUEST_FILE" ]; then
+            REQUEST_FILE="${{ github.event.client_payload.request_file }}"
+          fi
           if [ -z "$REQUEST_FILE" ]; then
             REQUEST_FILE=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'agent_requests/*.json' | head -n 1)
           fi
