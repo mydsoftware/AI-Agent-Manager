@@ -1,0 +1,9 @@
+{
+  "request_id": "20260820-germantechsat-e2e",
+  "agent": "website-audit",
+  "mode": "pre_contract",
+  "url": "https://germantechsat.com",
+  "access": false,
+  "language": "fa",
+  "description": "اجرای End-to-End ممیزی کامل سایت بدون دسترسی. Browser Audit واقعی با Chromium الزامی است. بررسی ظاهر، UX، ریسپانسیو دسکتاپ و موبایل، SEO، Performance، Accessibility، HTML، لینک‌ها، تصاویر، Meta، Schema، Sitemap، Robots، امنیت قابل مشاهده، محتوا و مشکلات فنی. برای هر مشکل شدت، اولویت، شواهد، راهکار اصلاح و دسترسی موردنیاز برای فاز پس از قرارداد را ارائه کن. هیچ تغییری روی سایت انجام نشود. اگر Browser Audit یا هر بخش دیگری به دلیل محدودیت محیط اجرا نشد، status باید completed_with_limitations باشد و محدودیت دقیق گزارش شود. گزارش کاملاً فارسی باشد."
+}
