@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from api import execute
 from manager.api_guard import APIGuard
 from manager.execution_store import ExecutionStore
+from manager.policy import authorize
 from manager.project_factory import ProjectRepositoryFactory
 from manager.request_router import route_request
 from manager.session_runtime import SessionRuntime
@@ -99,8 +100,9 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                 if not request_id or not url or not execution_id:
                     self._send_json(400, {"error": "request_id، url و X-Execution-ID الزامی هستند."})
                     return
-                if mode == "pre_contract" and access:
-                    self._send_json(400, {"error": "در حالت قبل از قرارداد نباید دسترسی فعال باشد."})
+                policy = authorize(action="website-audit", mode=mode, access=access)
+                if not policy.allowed:
+                    self._send_json(403, {"error": policy.reason})
                     return
                 if language != "fa":
                     self._send_json(400, {"error": "زبان گزارش این API باید فارسی باشد."})
@@ -132,6 +134,10 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                     request_id = str(body.get("request_id", "")).strip() or execution_id
                     if not execution_id:
                         self._send_json(400, {"error": "X-Execution-ID برای اجرای Async الزامی است."})
+                        return
+                    policy = authorize(action="website-audit", mode=routed.mode, access=routed.access)
+                    if not policy.allowed:
+                        self._send_json(403, {"error": policy.reason})
                         return
                     try:
                         self.execution_store.create(execution_id, request_id, "website-audit", routed.url)
