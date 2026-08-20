@@ -14,12 +14,13 @@ on:
 permissions:
   contents: write
 
+env:
+  PYTHONUNBUFFERED: "1"
+  GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+
 jobs:
   execute:
     runs-on: ubuntu-latest
-    env:
-      PYTHONUNBUFFERED: "1"
-      GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
     steps:
       - name: دریافت پروژه
         uses: actions/checkout@v4
@@ -42,12 +43,11 @@ jobs:
         run: |
           REQUEST_FILE="${{ inputs.request_file }}"
           if [ -z "$REQUEST_FILE" ]; then
-            REQUEST_FILE=$(find agent_requests -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -n | tail -n 1 | cut -d' ' -f2-)
+            REQUEST_FILE=$(find agent_requests -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
           fi
           test -n "$REQUEST_FILE"
           test -f "$REQUEST_FILE"
           echo "request_file=$REQUEST_FILE" >> "$GITHUB_OUTPUT"
-          echo "REQUEST_FILE=$REQUEST_FILE"
 
       - name: اجرای درخواست Manager
         id: manager
@@ -62,6 +62,20 @@ jobs:
           set -e
           echo "result_file=$RESULT_FILE" >> "$GITHUB_OUTPUT"
           exit "$CODE"
+
+      - name: اعتبارسنجی قرارداد نتیجه
+        if: always() && hashFiles('agent_results/*.result.json') != ''
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, glob
+          required = {"status", "request_id", "agent", "url"}
+          for path in glob.glob("agent_results/*.result.json"):
+              data = json.load(open(path, encoding="utf-8"))
+              missing = required - set(data)
+              if missing:
+                  raise SystemExit(f"نتیجه ناقص است: {sorted(missing)}")
+          PY
 
       - name: انتشار نتیجه به Repository
         if: always() && hashFiles('agent_results/*.result.json') != ''
