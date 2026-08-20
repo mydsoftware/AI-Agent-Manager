@@ -8,6 +8,7 @@ from api import execute
 from manager.api_guard import APIGuard
 from manager.execution_store import ExecutionStore
 from manager.project_factory import ProjectRepositoryFactory
+from manager.request_router import route_request
 from manager.session_runtime import SessionRuntime
 from manager.user_session import UserSessionManager
 
@@ -78,6 +79,15 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
 
+            if self.path == "/route":
+                request = str(body.get("request", "")).strip()
+                if not request:
+                    self._send_json(400, {"error": "request الزامی است."})
+                    return
+                routed = route_request(request)
+                self._send_json(200, routed.__dict__)
+                return
+
             if self.path == "/execute/website-audit":
                 request_id = str(body.get("request_id", "")).strip()
                 url = str(body.get("url", "")).strip()
@@ -110,12 +120,33 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
 
             if self.path == "/execute":
                 request = str(body.get("request", "")).strip()
-                agent = str(body.get("agent", "developer")).strip() or "developer"
                 if not request:
                     self._send_json(400, {"error": "request الزامی است."})
                     return
-                result = execute(request, agent)
-                self._send_json(200, result if isinstance(result, dict) else {"status": "completed", "agent": agent, "report": result})
+                routed = route_request(request)
+                if routed.agent == "website-audit":
+                    if not routed.url:
+                        self._send_json(400, {"error": "برای ممیزی سایت، URL سایت مشخص نشده است."})
+                        return
+                    execution_id = str(self.headers.get("X-Execution-ID", "")).strip()
+                    request_id = str(body.get("request_id", "")).strip() or execution_id
+                    if not execution_id:
+                        self._send_json(400, {"error": "X-Execution-ID برای اجرای Async الزامی است."})
+                        return
+                    try:
+                        self.execution_store.create(execution_id, request_id, "website-audit", routed.url)
+                    except FileExistsError:
+                        self._send_json(409, {"error": "execution_id تکراری است."})
+                        return
+                    structured_request = (
+                        f"شناسه درخواست: {request_id}\nحالت: {routed.mode}\nURL: {routed.url}\n"
+                        f"دسترسی: {'دارد' if routed.access else 'ندارد'}\nزبان گزارش: فارسی\n{routed.description}"
+                    )
+                    self.executor.submit(self._run_execution, execution_id, structured_request, routed.agent)
+                    self._send_json(202, {"status": "accepted", "agent": routed.agent, "execution_id": execution_id})
+                    return
+                result = execute(request, routed.agent)
+                self._send_json(200, result if isinstance(result, dict) else {"status": "completed", "agent": routed.agent, "report": result})
                 return
 
             if self.path == "/project/create":
