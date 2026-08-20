@@ -5,6 +5,7 @@ from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
+from .advanced import analyze_browser, analyze_html
 from .engine import WebsiteAuditEngine
 
 
@@ -31,7 +32,7 @@ class _CrawlerParser(HTMLParser):
 
 
 class DeepWebsiteAuditEngine:
-    """ممیزی چندصفحه‌ای با خزش کنترل‌شده، robots/sitemap و بررسی لینک‌های داخلی."""
+    """ممیزی چندصفحه‌ای با خزش، تحلیل HTML، عملکرد مرورگر و دسترس‌پذیری."""
 
     def __init__(self, timeout: int = 20, max_pages: int = 30) -> None:
         self.timeout = timeout
@@ -64,6 +65,8 @@ class DeepWebsiteAuditEngine:
                 total_images += len(parser.images)
                 scripts += parser.scripts
                 styles += parser.styles
+                if current == normalized:
+                    report.findings.extend(analyze_html(body))
                 for href in parser.links:
                     target = urljoin(current, href).split("#", 1)[0]
                     parsed = urlparse(target)
@@ -84,6 +87,9 @@ class DeepWebsiteAuditEngine:
         if len(pages) == 1 and self.max_pages > 1:
             report.findings.append(self.base._finding("خزش-003", "ساختار سایت", "خزش چندصفحه‌ای محدود شد", "کم", "فقط یک صفحه داخلی قابل کشف بود.", "ممیزی ساختار داخلی سایت کامل نیست.", ["منوی اصلی و لینک‌های داخلی را بررسی کنید تا صفحات مهم قابل کشف باشند."], False))
 
+        if run_browser:
+            self._run_advanced_browser(normalized, report)
+
         report.next_steps = [
             "ابتدا موارد بحرانی و با اهمیت زیاد را اصلاح کنید.",
             "برای اصلاحات خودکار، ابتدا نسخه پشتیبان و دسترسی محدود ایجاد کنید.",
@@ -93,6 +99,20 @@ class DeepWebsiteAuditEngine:
         ] + report.next_steps
         report.summary += f" در خزش کنترل‌شده {len(pages)} صفحه، {total_images} تصویر، {scripts} اسکریپت و {styles} فایل CSS شناسایی شد."
         return report
+
+    def _run_advanced_browser(self, url: str, report) -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch(headless=True)
+                page = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=1)
+                page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                report.findings.extend(analyze_browser(page))
+                report.findings.extend(analyze_html(page.content()))
+                browser.close()
+        except Exception:
+            # ممیزی پایه قبلاً وضعیت شکست Playwright را ثبت کرده است؛ اینجا خروجی را دوباره تکرار نمی‌کنیم.
+            return
 
     def _get(self, url: str):
         request = Request(url, headers={"User-Agent": "AI-Agent-Manager-Website-Auditor/1.0"})
