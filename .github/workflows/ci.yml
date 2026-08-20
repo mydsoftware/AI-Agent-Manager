@@ -23,6 +23,8 @@ jobs:
           pip install -r requirements.txt
       - name: نصب Chromium برای Playwright
         run: python -m playwright install --with-deps chromium
+      - name: بررسی Syntax کل پروژه
+        run: python -m compileall -q .
       - name: اجرای همه آزمون‌ها
         run: pytest -q
 
