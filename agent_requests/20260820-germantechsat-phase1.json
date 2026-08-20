@@ -1,0 +1,12 @@
+{
+  "request_id": "20260820-germantechsat-phase1",
+  "agent": "website-audit",
+  "url": "https://germantechsat.com",
+  "phase": "pre_contract",
+  "access": {
+    "provided": false,
+    "required_for_initial_audit": false
+  },
+  "language": "fa",
+  "description": "ممیزی کامل و غیرمخرب سایت GermantechSat بدون هیچ دسترسی مدیریتی. وضعیت ظاهری و UI، ریسپانسیو موبایل و دسکتاپ، UX، SEO تکنیکال و محتوایی، Performance و Core Web Vitals، Accessibility، ساختار HTML، لینک‌ها، تصاویر، متاها، Schema، Sitemap، Robots، امنیت قابل بررسی از بیرون و کیفیت محتوا را بررسی کن. تمام مشکلات را با شدت و اولویت، شواهد، اثر کسب‌وکاری، راهکار دقیق اصلاح و نوع دسترسی موردنیاز برای اصلاح هر مورد گزارش کن. هیچ تغییری روی سایت انجام نده. خروجی کاملاً فارسی و قابل ارائه به مشتری باشد. مواردی که بدون دسترسی قابل بررسی نیستند را جداگانه مشخص کن و بگو بعد از قرارداد چه دسترسی‌ای لازم است."
+}

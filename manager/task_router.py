@@ -19,12 +19,15 @@ class RoutingDecision:
 class IntelligentTaskRouter:
     """ایجنت مناسب را بر اساس نوع کار و متن وظیفه انتخاب می‌کند."""
 
+    # قوانین خاص‌تر باید قبل از قوانین عمومی قرار بگیرند تا یک درخواست امنیتی
+    # که کلمه «سایت» هم دارد، اشتباهاً به ممیزی عمومی سایت نرود.
     RULES = (
-        ("github-project", ("github", "repository", "repo", "branch", "pull request", "pr", "commit", "فایل", "گیتهاب"), True),
         ("security", ("security", "pentest", "penetration", "vulnerability", "exploit", "hardening", "امنیت", "هک", "تست نفوذ", "آسیب‌پذیری", "نفوذ"), True),
+        ("website-audit", ("website audit", "web audit", "site audit", "website", "web site", "seo", "responsive", "performance", "core web vitals", "سایت", "وب‌سایت", "سئو", "ریسپانسیو", "سرعت سایت", "ممیزی سایت", "بررسی سایت"), False),
+        ("github-project", ("github", "repository", "repo", "branch", "pull request", "pr", "commit", "فایل", "گیتهاب"), True),
         ("qa", ("test", "testing", "bug", "qa", "pytest", "تست", "خطا", "آزمون"), True),
         ("developer", ("code", "coding", "implement", "fix", "refactor", "develop", "کدنویسی", "پیاده", "اصلاح"), True),
-        ("research", ("research", "analyze", "analysis", "investigate", "تحقیق", "بررسی", "تحلیل"), False),
+        ("research", ("research", "analyze", "analysis", "investigate", "تحقیق", "تحلیل"), False),
     )
 
     ENGINEERING_AGENTS = {"github-project", "developer", "qa", "security"}
