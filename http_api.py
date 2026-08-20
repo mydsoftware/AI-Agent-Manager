@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from api import execute
 from manager.api_guard import APIGuard
 from manager.execution_store import ExecutionStore
+from manager.github_dispatch import GitHubDispatchError, dispatch_agent
 from manager.project_factory import ProjectRepositoryFactory
 from manager.session_runtime import SessionRuntime
 from manager.user_session import UserSessionManager
@@ -86,18 +88,26 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                 except FileExistsError:
                     self._send_json(409, {"error": "execution_id تکراری است."})
                     return
-                structured_request = (
-                    f"شناسه درخواست: {request_id}\nحالت: {mode}\nURL: {url}\n"
-                    f"دسترسی: {'دارد' if access else 'ندارد'}\nزبان گزارش: {language}\n{description}"
-                )
+
+                request = {
+                    "request_id": request_id,
+                    "execution_id": execution_id,
+                    "agent": "website-audit",
+                    "url": url,
+                    "mode": mode,
+                    "access": access,
+                    "language": language,
+                    "description": description,
+                }
+                repository = os.environ.get("GITHUB_AGENT_REPOSITORY", "mydsoftware/AI-Agent-Manager")
                 try:
-                    self.execution_store.update(execution_id, status="running")
-                    result = execute(structured_request, "website-audit")
-                    self.execution_store.update(execution_id, status="completed", result=result)
-                except Exception as error:
-                    self.execution_store.update(execution_id, status="failed", error="اجرای Agent با خطا مواجه شد.")
-                    self._send_json(502, {"status": "trigger_failed", "execution_id": execution_id})
+                    self.execution_store.update(execution_id, status="dispatched")
+                    dispatch_agent(repository, request)
+                except GitHubDispatchError as error:
+                    self.execution_store.update(execution_id, status="failed", error=str(error))
+                    self._send_json(502, {"status": "trigger_failed", "execution_id": execution_id, "error": str(error)})
                     return
+
                 self._send_json(202, {"status": "accepted", "request_id": request_id, "execution_id": execution_id})
                 return
 
