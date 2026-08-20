@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       request_file:
-        description: "مسیر فایل درخواست در agent_requests"
-        required: true
+        description: "مسیر فایل درخواست در agent_requests؛ برای اجرای مستقیم"
+        required: false
         type: string
   repository_dispatch:
     types: [execute-agent]
@@ -41,14 +41,30 @@ jobs:
       - name: نصب Chromium
         run: python -m playwright install --with-deps chromium
 
+      - name: ساخت Request از رویداد
+        if: github.event_name == 'repository_dispatch'
+        shell: bash
+        env:
+          CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          mkdir -p agent_requests
+          python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ["CLIENT_PAYLOAD"])
+          required = ("request_id", "agent", "url")
+          if any(not payload.get(key) for key in required):
+              raise SystemExit("اطلاعات Request ناقص است.")
+          path = f"agent_requests/{payload['request_id']}.json"
+          with open(path, "w", encoding="utf-8") as file:
+              json.dump(payload, file, ensure_ascii=False, indent=2)
+          print(path)
+          PY
+
       - name: تعیین Request
         id: request
         shell: bash
         run: |
           REQUEST_FILE="${{ inputs.request_file }}"
-          if [ -z "$REQUEST_FILE" ]; then
-            REQUEST_FILE="${{ github.event.client_payload.request_file }}"
-          fi
           if [ -z "$REQUEST_FILE" ]; then
             REQUEST_FILE=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'agent_requests/*.json' | head -n 1)
           fi
