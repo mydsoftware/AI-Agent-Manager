@@ -35,7 +35,10 @@ jobs:
       - name: نصب وابستگی‌ها
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install -r requirements.txt
+
+      - name: نصب Chromium برای Browser Audit
+        run: python -m playwright install --with-deps chromium
 
       - name: تعیین درخواست
         id: request
@@ -93,6 +96,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ai-agent-manager-result
-          path: |
-            agent_results/*.result.json
+          path: agent_results/*.result.json
           if-no-files-found: ignore
