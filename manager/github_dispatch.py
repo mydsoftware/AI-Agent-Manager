@@ -20,6 +20,9 @@ def dispatch_agent(repository: str, request: dict) -> None:
         raise GitHubDispatchError("GITHUB_TOKEN در محیط Manager تنظیم نشده است.")
     if not repository or "/" not in repository:
         raise GitHubDispatchError("نام Repository نامعتبر است.")
+    required = ("request_id", "agent", "url", "execution_id")
+    if any(not str(request.get(key, "")).strip() for key in required):
+        raise GitHubDispatchError("اطلاعات اجرای Agent ناقص است.")
 
     payload = json.dumps(
         {"event_type": "execute-agent", "client_payload": request},
