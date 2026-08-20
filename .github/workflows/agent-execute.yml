@@ -1,0 +1,158 @@
+name: AI-Agent-Manager Execute
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_file:
+        description: "مسیر فایل درخواست در agent_requests؛ برای اجرای مستقیم"
+        required: false
+        type: string
+  repository_dispatch:
+    types: [execute-agent]
+  push:
+    paths:
+      - "agent_requests/*.json"
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: دریافت پروژه
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: آماده‌سازی Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: نصب وابستگی‌ها
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: نصب Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: ساخت Request از رویداد
+        if: github.event_name == 'repository_dispatch'
+        shell: bash
+        env:
+          CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          mkdir -p agent_requests
+          python - <<'PY'
+          import json, os
+          payload = json.loads(os.environ["CLIENT_PAYLOAD"])
+          required = ("request_id", "agent", "url", "execution_id")
+          if any(not payload.get(key) for key in required):
+              raise SystemExit("اطلاعات Request ناقص است.")
+          path = f"agent_requests/{payload['request_id']}.json"
+          with open(path, "w", encoding="utf-8") as file:
+              json.dump(payload, file, ensure_ascii=False, indent=2)
+          print(path)
+          PY
+
+      - name: تعیین Request
+        id: request
+        shell: bash
+        run: |
+          REQUEST_FILE="${{ inputs.request_file }}"
+          if [ -z "$REQUEST_FILE" ]; then
+            REQUEST_FILE=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'agent_requests/*.json' | head -n 1)
+          fi
+          if [ -z "$REQUEST_FILE" ]; then
+            REQUEST_FILE=$(find agent_requests -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
+          fi
+          test -n "$REQUEST_FILE"
+          test -f "$REQUEST_FILE"
+          echo "request_file=$REQUEST_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: اعتبارسنجی Request
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os
+          path = os.environ["REQUEST_FILE"]
+          data = json.load(open(path, encoding="utf-8"))
+          for key in ("request_id", "agent", "url", "execution_id"):
+              if not data.get(key):
+                  raise SystemExit(f"فیلد الزامی وجود ندارد: {key}")
+          PY
+        env:
+          REQUEST_FILE: ${{ steps.request.outputs.request_file }}
+
+      - name: اجرای Agent
+        id: agent
+        shell: bash
+        run: |
+          mkdir -p agent_results
+          REQUEST_FILE="${{ steps.request.outputs.request_file }}"
+          RESULT_FILE="agent_results/$(basename "$REQUEST_FILE" .json).result.json"
+          set +e
+          python -m manager "$REQUEST_FILE" | tee "$RESULT_FILE"
+          CODE=${PIPESTATUS[0]}
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          set -e
+          test -s "$RESULT_FILE"
+          exit "$CODE"
+
+      - name: ارسال نتیجه به Manager
+        if: always() && hashFiles('agent_results/*.result.json') != '' && secrets.MANAGER_CALLBACK_URL != '' && secrets.MANAGER_API_KEY != ''
+        shell: bash
+        env:
+          MANAGER_CALLBACK_URL: ${{ secrets.MANAGER_CALLBACK_URL }}
+          MANAGER_API_KEY: ${{ secrets.MANAGER_API_KEY }}
+          REQUEST_FILE: ${{ steps.request.outputs.request_file }}
+          AGENT_EXIT_CODE: ${{ steps.agent.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          from pathlib import Path
+          request = json.load(open(os.environ["REQUEST_FILE"], encoding="utf-8"))
+          result_path = next(Path("agent_results").glob("*.result.json"))
+          raw = result_path.read_text(encoding="utf-8")
+          try:
+              result = json.loads(raw)
+          except json.JSONDecodeError:
+              result = {"report": raw}
+          payload = json.dumps({
+              "execution_id": request["execution_id"],
+              "request_id": request["request_id"],
+              "status": "completed" if os.environ.get("AGENT_EXIT_CODE") == "0" else "failed",
+              "result": result,
+          }, ensure_ascii=False).encode("utf-8")
+          req = urllib.request.Request(
+              os.environ["MANAGER_CALLBACK_URL"], data=payload, method="POST",
+              headers={"Content-Type": "application/json", "X-API-Key": os.environ["MANAGER_API_KEY"]},
+          )
+          with urllib.request.urlopen(req, timeout=30) as response:
+              if response.status not in (200, 202):
+                  raise SystemExit("Manager نتیجه را نپذیرفت.")
+          PY
+
+      - name: انتشار نتیجه
+        if: always() && hashFiles('agent_results/*.result.json') != ''
+        shell: bash
+        run: |
+          git config user.name "AI-Agent-Manager"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agent_results/*.result.json
+          git diff --cached --quiet && exit 0
+          git commit -m "run: publish agent execution result"
+          git push
+
+      - name: Artifact نتیجه
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-agent-execution-result
+          path: agent_results/*.result.json
+          if-no-files-found: ignore
