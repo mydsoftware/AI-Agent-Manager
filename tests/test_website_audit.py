@@ -16,7 +16,14 @@ def test_website_audit_agent_is_registered() -> None:
 
 def test_router_selects_website_audit_for_site_review() -> None:
     registry = create_default_registry()
-    decision = IntelligentTaskRouter(registry).select(Task(id="1", title="بررسی سایت", description="GermantechSat.com را از نظر ظاهر، ریسپانسیو و سئو بررسی کن."))
+    decision = IntelligentTaskRouter(registry).select(
+        Task(
+            id="1",
+            title="بررسی سایت",
+            description="GermantechSat.com را از نظر ظاهر، ریسپانسیو و سئو بررسی کن.",
+            agent="",
+        )
+    )
     assert decision.agent == "website-audit"
 
 
@@ -29,6 +36,10 @@ def test_access_guide_is_step_by_step_and_persian() -> None:
 
 
 def test_agent_returns_persian_guidance_when_url_is_missing() -> None:
-    result = json.loads(WebsiteAuditAgent().run(Task(id="2", title="ممیزی", description="سایت را بررسی کن.")))
+    result = json.loads(
+        WebsiteAuditAgent().run(
+            Task(id="2", title="ممیزی", description="سایت را بررسی کن.", agent="")
+        )
+    )
     assert result["وضعیت"] == "نیازمند اطلاعات"
     assert "آدرس" in result["پیام"]
