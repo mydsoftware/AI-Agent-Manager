@@ -1,0 +1,8 @@
+{
+  "request_id": "20260820-germantechsat-r2",
+  "agent": "website-audit",
+  "mode": "pre_contract",
+  "url": "https://germantechsat.com",
+  "access": false,
+  "description": "ممیزی کامل و مستقل سایت بدون دسترسی مدیریتی. گزارش کاملاً فارسی شامل ظاهر، UX، ریسپانسیو واقعی با مرورگر، SEO، Performance، Accessibility، HTML، لینک‌ها، تصاویر، Meta، Schema، Sitemap، Robots، امنیت قابل مشاهده از بیرون، محتوا، مشکلات با شدت و اولویت، شواهد، راهکار اصلاح، دسترسی موردنیاز برای اصلاح و محدودیت‌های خود Agent. هیچ تغییری روی سایت انجام نشود. Browser audit باید واقعاً اجرا شود و نتیجه آن در گزارش ثبت شود."
+}
