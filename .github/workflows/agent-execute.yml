@@ -105,7 +105,7 @@ jobs:
           exit "$CODE"
 
       - name: ارسال نتیجه به Manager
-        if: always() && hashFiles('agent_results/*.result.json') != '' && env.MANAGER_CALLBACK_URL != ''
+        if: always() && hashFiles('agent_results/*.result.json') != '' && secrets.MANAGER_CALLBACK_URL != '' && secrets.MANAGER_API_KEY != ''
         shell: bash
         env:
           MANAGER_CALLBACK_URL: ${{ secrets.MANAGER_CALLBACK_URL }}
@@ -115,8 +115,9 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, urllib.request
+          from pathlib import Path
           request = json.load(open(os.environ["REQUEST_FILE"], encoding="utf-8"))
-          result_path = next(__import__('pathlib').Path("agent_results").glob("*.result.json"))
+          result_path = next(Path("agent_results").glob("*.result.json"))
           raw = result_path.read_text(encoding="utf-8")
           try:
               result = json.loads(raw)
