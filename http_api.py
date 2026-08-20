@@ -56,9 +56,62 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
+
             if self.path == "/execute":
-                self._send_json(200, execute(body.get("request", ""), body.get("agent", "developer")))
+                request = str(body.get("request", "")).strip()
+                agent = str(body.get("agent", "developer")).strip() or "developer"
+                if not request:
+                    self._send_json(400, {"error": "request الزامی است."})
+                    return
+                result = execute(request, agent)
+                if isinstance(result, dict):
+                    result.setdefault("status", "completed")
+                    result.setdefault("agent", agent)
+                    self._send_json(200, result)
+                else:
+                    self._send_json(200, {"status": "completed", "agent": agent, "report": result})
                 return
+
+            if self.path == "/execute/website-audit":
+                request_id = str(body.get("request_id", "")).strip()
+                url = str(body.get("url", "")).strip()
+                mode = str(body.get("mode", "pre_contract")).strip() or "pre_contract"
+                access = bool(body.get("access", False))
+                language = str(body.get("language", "fa")).strip() or "fa"
+                description = str(body.get("description", "ممیزی کامل سایت")).strip()
+                if not request_id or not url:
+                    self._send_json(400, {"error": "request_id و url الزامی هستند."})
+                    return
+                if mode == "pre_contract" and access:
+                    self._send_json(400, {"error": "در حالت قبل از قرارداد نباید دسترسی فعال باشد."})
+                    return
+                structured_request = (
+                    f"شناسه درخواست: {request_id}\n"
+                    f"حالت: {mode}\n"
+                    f"URL: {url}\n"
+                    f"دسترسی: {'دارد' if access else 'ندارد'}\n"
+                    f"زبان گزارش: {language}\n"
+                    f"{description}"
+                )
+                result = execute(structured_request, "website-audit")
+                if isinstance(result, dict):
+                    result.setdefault("status", "completed")
+                    result.setdefault("request_id", request_id)
+                    result.setdefault("agent", "website-audit")
+                    result.setdefault("url", url)
+                    result.setdefault("mode", mode)
+                    self._send_json(200, result)
+                else:
+                    self._send_json(200, {
+                        "status": "completed",
+                        "request_id": request_id,
+                        "agent": "website-audit",
+                        "url": url,
+                        "mode": mode,
+                        "report": result,
+                    })
+                return
+
             if self.path == "/project/create":
                 name = str(body.get("name", "")).strip()
                 description = str(body.get("description", "")).strip()
@@ -71,22 +124,25 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                 result = self.project_factory.create(name, description, request, project_type, is_private)
                 self._send_json(201, result.__dict__)
                 return
+
             if self.path == "/session/start":
-                session_id = body.get("session_id", "").strip()
-                request = body.get("request", "").strip()
+                session_id = str(body.get("session_id", "")).strip()
+                request = str(body.get("request", "")).strip()
                 if not session_id or not request:
                     self._send_json(400, {"error": "session_id و request الزامی هستند."})
                     return
                 self._send_json(200, self.session_runtime.start(session_id, request).__dict__)
                 return
+
             if self.path == "/session/answer":
-                session_id = body.get("session_id", "").strip()
-                answer = body.get("answer", "").strip()
+                session_id = str(body.get("session_id", "")).strip()
+                answer = str(body.get("answer", "")).strip()
                 if not session_id or not answer:
                     self._send_json(400, {"error": "session_id و answer الزامی هستند."})
                     return
                 self._send_json(200, self.session_runtime.answer(session_id, answer).__dict__)
                 return
+
             self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
         except json.JSONDecodeError:
             self._send_json(400, {"error": "JSON نامعتبر است."})
