@@ -69,6 +69,31 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
 
+            if self.path == "/executions/callback":
+                execution_id = str(body.get("execution_id", "")).strip()
+                request_id = str(body.get("request_id", "")).strip()
+                status = str(body.get("status", "")).strip()
+                if not execution_id or not request_id or status not in {"completed", "failed"}:
+                    self._send_json(400, {"error": "execution_id، request_id و status معتبر الزامی هستند."})
+                    return
+                try:
+                    record = self.execution_store.get(execution_id)
+                except (FileNotFoundError, ValueError):
+                    self._send_json(404, {"error": "Execution پیدا نشد."})
+                    return
+                if record.request_id != request_id:
+                    self._send_json(409, {"error": "request_id با Execution همخوانی ندارد."})
+                    return
+                changes = {"status": status}
+                if status == "completed":
+                    changes["result"] = body.get("result")
+                    changes["error"] = None
+                else:
+                    changes["error"] = "اجرای Agent در GitHub Actions ناموفق بود."
+                updated = self.execution_store.update(execution_id, **changes)
+                self._send_json(202, {"status": "accepted", "execution_id": updated.execution_id})
+                return
+
             if self.path == "/execute/website-audit":
                 request_id = str(body.get("request_id", "")).strip()
                 url = str(body.get("url", "")).strip()
