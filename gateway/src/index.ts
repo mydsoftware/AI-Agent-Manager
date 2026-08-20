@@ -2,6 +2,7 @@ interface Env {
   GATEWAY_TOKEN: string;
   MANAGER_API_URL: string;
   MANAGER_API_KEY: string;
+  RESULT_API_URL?: string;
 }
 
 const jsonHeaders = {
@@ -40,6 +41,16 @@ function validUrl(value: unknown): value is string {
   }
 }
 
+function authError(request: Request, env: Env): Promise<Response> {
+  return (async () => {
+    const supplied = bearer(request);
+    if (!supplied || !(await constantTimeEqual(supplied, env.GATEWAY_TOKEN))) {
+      return response({ error: "دسترسی غیرمجاز است." }, 401);
+    }
+    return response({ error: "" }, 200);
+  })();
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === "OPTIONS") {
@@ -54,18 +65,38 @@ export default {
     }
 
     const url = new URL(request.url);
-
     if (url.pathname === "/health" && request.method === "GET") {
       return response({ status: "فعال" });
     }
 
-    if (url.pathname !== "/execute/website-audit" || request.method !== "POST") {
-      return response({ error: "مسیر درخواست پیدا نشد." }, 404);
+    const protectedPath = url.pathname === "/execute/website-audit" || url.pathname.startsWith("/executions/");
+    if (!protectedPath) return response({ error: "مسیر درخواست پیدا نشد." }, 404);
+    if (request.method !== "POST" && !(url.pathname.startsWith("/executions/") && request.method === "GET")) {
+      return response({ error: "روش درخواست مجاز نیست." }, 405);
     }
 
-    const supplied = bearer(request);
-    if (!supplied || !(await constantTimeEqual(supplied, env.GATEWAY_TOKEN))) {
-      return response({ error: "دسترسی غیرمجاز است." }, 401);
+    const auth = await authError(request, env);
+    if (auth.status !== 200) return auth;
+
+    if (url.pathname.startsWith("/executions/") && request.method === "GET") {
+      const executionId = url.pathname.slice("/executions/".length).trim();
+      if (!/^[0-9a-f-]{36}$/i.test(executionId)) {
+        return response({ error: "execution_id نامعتبر است." }, 400);
+      }
+      const resultBase = env.RESULT_API_URL || env.MANAGER_API_URL;
+      try {
+        const resultUrl = new URL(`/executions/${executionId}`, resultBase);
+        const upstream = await fetch(resultUrl, {
+          headers: { "x-api-key": env.MANAGER_API_KEY },
+        });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: jsonHeaders,
+        });
+      } catch {
+        return response({ status: "pending", execution_id: executionId }, 202);
+      }
     }
 
     let body: Record<string, unknown>;
@@ -82,59 +113,35 @@ export default {
     const language = typeof body.language === "string" ? body.language : "fa";
     const description = typeof body.description === "string" ? body.description : "ممیزی کامل سایت";
 
-    if (!requestId || requestId.length > 128) {
-      return response({ error: "request_id الزامی و حداکثر ۱۲۸ کاراکتر است." }, 400);
-    }
-    if (!validUrl(target)) {
-      return response({ error: "فقط URL معتبر HTTPS مجاز است." }, 400);
-    }
-    if (mode === "pre_contract" && access) {
-      return response({ error: "در حالت قبل از قرارداد نباید دسترسی فعال باشد." }, 400);
-    }
-    if (language !== "fa") {
-      return response({ error: "زبان گزارش این Gateway باید فارسی باشد." }, 400);
-    }
+    if (!requestId || requestId.length > 128) return response({ error: "request_id الزامی و حداکثر ۱۲۸ کاراکتر است." }, 400);
+    if (!validUrl(target)) return response({ error: "فقط URL معتبر HTTPS مجاز است." }, 400);
+    if (mode === "pre_contract" && access) return response({ error: "در حالت قبل از قرارداد نباید دسترسی فعال باشد." }, 400);
+    if (language !== "fa") return response({ error: "زبان گزارش این Gateway باید فارسی باشد." }, 400);
 
-    const upstream = new URL("/execute/website-audit", env.MANAGER_API_URL);
     const executionId = crypto.randomUUID();
-    const upstreamResponse = await fetch(upstream, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": env.MANAGER_API_KEY,
-        "x-execution-id": executionId,
-      },
-      body: JSON.stringify({
-        request_id: requestId,
-        url: target,
-        mode,
-        access,
-        language,
-        description,
-      }),
-    });
-
-    if (!upstreamResponse.ok) {
-      return response({
-        status: "trigger_failed",
-        request_id: requestId,
-        execution_id: executionId,
-        error: "اجرای Agent در Manager با خطا مواجه شد.",
-      }, 502);
-    }
-
-    let result: unknown;
+    const upstream = new URL("/execute/website-audit", env.MANAGER_API_URL);
     try {
-      result = await upstreamResponse.json();
+      const upstreamResponse = await fetch(upstream, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": env.MANAGER_API_KEY,
+          "x-execution-id": executionId,
+        },
+        body: JSON.stringify({ request_id: requestId, url: target, mode, access, language, description }),
+      });
+      if (!upstreamResponse.ok) {
+        return response({ status: "trigger_failed", request_id: requestId, execution_id: executionId, error: "اجرای Agent در Manager با خطا مواجه شد." }, 502);
+      }
     } catch {
-      result = null;
+      return response({ status: "trigger_failed", request_id: requestId, execution_id: executionId, error: "ارتباط با Manager برقرار نشد." }, 502);
     }
 
     return response({
       status: "accepted",
       request_id: requestId,
       execution_id: executionId,
-      result,
+      result_url: `/executions/${executionId}`,
     }, 202);
   },
 };
