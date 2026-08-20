@@ -1,0 +1,9 @@
+{
+  "request_id": "20260820-germantechsat-r3",
+  "agent": "website-audit",
+  "mode": "pre_contract",
+  "url": "https://germantechsat.com",
+  "access": false,
+  "language": "fa",
+  "description": "ممیزی کامل سایت بدون دسترسی مدیریتی. بررسی واقعی با Chromium در دسکتاپ و موبایل، ظاهر و UI، UX، ریسپانسیو، SEO، Performance، Accessibility، HTML، لینک‌ها، تصاویر، Meta، Schema، Sitemap، Robots، امنیت قابل مشاهده از بیرون، محتوا، مشکلات با شدت و اولویت، شواهد، راهکار اصلاح، دسترسی موردنیاز برای اصلاح و محدودیت‌های خود Agent. هیچ تغییری روی سایت انجام نشود."
+}
