@@ -7,6 +7,9 @@ on:
         description: "مسیر فایل درخواست در agent_requests"
         required: true
         type: string
+  push:
+    paths:
+      - "agent_requests/*.json"
 
 permissions:
   contents: write
@@ -36,10 +39,24 @@ jobs:
       - name: نصب Chromium
         run: python -m playwright install --with-deps chromium
 
+      - name: تعیین Request
+        id: request
+        shell: bash
+        run: |
+          REQUEST_FILE="${{ inputs.request_file }}"
+          if [ -z "$REQUEST_FILE" ]; then
+            REQUEST_FILE=$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'agent_requests/*.json' | head -n 1)
+          fi
+          if [ -z "$REQUEST_FILE" ]; then
+            REQUEST_FILE=$(find agent_requests -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)
+          fi
+          test -n "$REQUEST_FILE"
+          test -f "$REQUEST_FILE"
+          echo "request_file=$REQUEST_FILE" >> "$GITHUB_OUTPUT"
+
       - name: اعتبارسنجی Request
         shell: bash
         run: |
-          test -f "${{ inputs.request_file }}"
           python - <<'PY'
           import json, os
           path = os.environ["REQUEST_FILE"]
@@ -49,13 +66,13 @@ jobs:
                   raise SystemExit(f"فیلد الزامی وجود ندارد: {key}")
           PY
         env:
-          REQUEST_FILE: ${{ inputs.request_file }}
+          REQUEST_FILE: ${{ steps.request.outputs.request_file }}
 
       - name: اجرای Agent
         shell: bash
         run: |
           mkdir -p agent_results
-          REQUEST_FILE="${{ inputs.request_file }}"
+          REQUEST_FILE="${{ steps.request.outputs.request_file }}"
           RESULT_FILE="agent_results/$(basename "$REQUEST_FILE" .json).result.json"
           set +e
           python -m manager "$REQUEST_FILE" | tee "$RESULT_FILE"
