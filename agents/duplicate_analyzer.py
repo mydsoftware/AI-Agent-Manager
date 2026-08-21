@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from agents.url_identity import UrlIdentity
 
 if TYPE_CHECKING:
-    from agents.public_site_scanner import PageObservation
+    from agents.page_observation import PageObservation
 
 
 @dataclass(frozen=True)
@@ -31,9 +31,4 @@ class DuplicateAnalyzer:
             normalized_url = UrlIdentity.normalize(item.url)
             if normalized_url not in groups[key]:
                 groups[key].append(normalized_url)
-
-        return [
-            DuplicateGroup(key=key, urls=tuple(urls), canonical_url=canonical_by_key[key])
-            for key, urls in groups.items()
-            if len(urls) > 1
-        ]
+        return [DuplicateGroup(key=key, urls=tuple(urls), canonical_url=canonical_by_key[key]) for key, urls in groups.items() if len(urls) > 1]

@@ -3,37 +3,19 @@ from __future__ import annotations
 import ipaddress
 import socket
 from collections import deque
-from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from agents.canonical_analyzer import CanonicalAnalyzer, CanonicalObservation
 from agents.crawl_state import CrawlState
 from agents.duplicate_analyzer import DuplicateAnalyzer, DuplicateGroup
+from agents.page_observation import PageObservation
 from agents.redirect_tracker import RedirectObservation, RedirectTracker
+from agents.robots_policy import RobotsPolicy
 from agents.site_audit_html import SiteAuditHtmlRenderer
 from agents.site_audit_report import SiteAuditReport, SiteAuditReportBuilder
-from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
 from agents.url_identity import UrlIdentity
-
-
-@dataclass(frozen=True)
-class PageObservation:
-    """مشاهدات عمومی یک صفحه بدون عملیات نوشتنی."""
-    url: str
-    status: int
-    title: str = ""
-    meta_description: str = ""
-    h1_count: int = 0
-    image_count: int = 0
-    images_without_alt: int = 0
-    internal_links: list[str] = field(default_factory=list)
-    security_headers: dict[str, str] = field(default_factory=dict)
-    load_time_ms: int = 0
-    redirect: RedirectObservation | None = None
-    canonical_url: str | None = None
-    canonical: CanonicalObservation | None = None
 
 
 class PublicSiteScanner:
@@ -73,7 +55,6 @@ class PublicSiteScanner:
         return UrlIdentity.normalize(url)
 
     def initialize(self, start_url: str) -> dict[str, list[str]]:
-        """Discovery را اجرا و URLهای مجاز Sitemap را وارد Queue می‌کند."""
         root = self.validate_url(start_url)
         discovered = self.discovery.discover(root)
         self._load_robots_policy(discovered.get("robots", []))
@@ -85,7 +66,6 @@ class PublicSiteScanner:
         self.robots_discovered = True
 
     def enqueue(self, urls: list[str]) -> None:
-        """URLهای جدید را با هویت یکتا و قوانین robots وارد صف می‌کند."""
         queued = {UrlIdentity.normalize(item) for item in self.queue}
         visited = {UrlIdentity.normalize(item) for item in self.visited}
         for url in urls:
@@ -98,15 +78,12 @@ class PublicSiteScanner:
             queued.add(normalized)
 
     def resume(self, urls: list[str]) -> None:
-        """Crawl را از URLهای ذخیره‌شده ادامه می‌دهد."""
         self.enqueue(urls)
 
     def save_state(self, path: str | Path) -> None:
-        """وضعیت فعلی صف، صفحات و خطاها را ذخیره می‌کند."""
         CrawlState(queue=list(self.queue), visited=sorted(self.visited), failed=dict(self.failed)).save(path)
 
     def load_state(self, path: str | Path) -> None:
-        """وضعیت ذخیره‌شده را روی Scanner بازیابی می‌کند."""
         state = CrawlState.load(path)
         self.queue = deque()
         self.visited = set(state.visited)
@@ -114,7 +91,6 @@ class PublicSiteScanner:
         self.enqueue(state.queue)
 
     def next_url(self) -> str | None:
-        """URL بعدی صف را برمی‌گرداند."""
         if not self.queue:
             return None
         url = self.queue.popleft()
@@ -122,32 +98,22 @@ class PublicSiteScanner:
         return url
 
     def record_redirect(self, source_url: str, status: int, location: str | None) -> RedirectObservation | None:
-        """Redirect صفحه را ثبت می‌کند و مقصد را برای Crawl بعدی وارد Queue می‌کند."""
         observation = self.redirect_tracker.record(source_url, status, location)
         if observation is not None:
             self.enqueue([observation.destination_url])
         return observation
 
     def record_observation(self, observation: PageObservation) -> None:
-        """نتیجه صفحه را ثبت و لینک‌های داخلی آن را وارد صف می‌کند."""
         self.observations.append(observation)
         self.enqueue(observation.internal_links)
 
     def duplicate_groups(self) -> list[DuplicateGroup]:
-        """گروه‌های Duplicate کشف‌شده از کل صفحات اسکن‌شده را برمی‌گرداند."""
         return self.duplicate_analyzer.analyze(self.observations)
 
     def generate_report(self) -> SiteAuditReport:
-        """گزارش کامل ممیزی را از نتایج فعلی Scanner تولید می‌کند."""
-        return self.report_builder.build(
-            self.observations,
-            self.failed,
-            self.duplicate_groups(),
-            self.redirect_tracker.observations,
-        )
+        return self.report_builder.build(self.observations, self.failed, self.duplicate_groups(), self.redirect_tracker.observations)
 
     def generate_html_report(self, path: str | Path, title: str = "گزارش ممیزی سایت") -> Path:
-        """گزارش HTML فارسی را تولید و در مسیر مشخص ذخیره می‌کند."""
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         html = self.html_renderer.render(self.generate_report(), title=title)
@@ -155,16 +121,9 @@ class PublicSiteScanner:
         return destination
 
     def record_failure(self, url: str, error: Exception | str) -> None:
-        """خطای یک صفحه را ثبت می‌کند بدون اینکه کل Crawl متوقف شود."""
         self.failed[UrlIdentity.normalize(url)] = str(error)
 
-    def build_observation(
-        self, *, url: str, status: int, title: str = "", meta_description: str = "",
-        h1_count: int = 0, image_count: int = 0, images_without_alt: int = 0,
-        links: list[str] | None = None, security_headers: dict[str, str] | None = None,
-        load_time_ms: int = 0, location: str | None = None, canonical_url: str | None = None,
-    ) -> PageObservation:
-        """مشاهدات Browser/HTTP را به مدل داخلی تبدیل می‌کند."""
+    def build_observation(self, *, url: str, status: int, title: str = "", meta_description: str = "", h1_count: int = 0, image_count: int = 0, images_without_alt: int = 0, links: list[str] | None = None, security_headers: dict[str, str] | None = None, load_time_ms: int = 0, location: str | None = None, canonical_url: str | None = None) -> PageObservation:
         base = urlparse(url)
         internal: list[str] = []
         identities: set[str] = set()
@@ -178,9 +137,4 @@ class PublicSiteScanner:
         redirect = self.record_redirect(url, status, location)
         canonical = UrlIdentity.normalize(urljoin(url, canonical_url)) if canonical_url else None
         canonical_observation = self.canonical_analyzer.analyze(url, canonical_url)
-        return PageObservation(
-            url=UrlIdentity.normalize(url), status=status, title=title, meta_description=meta_description,
-            h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt,
-            internal_links=internal, security_headers=security_headers or {}, load_time_ms=load_time_ms,
-            redirect=redirect, canonical_url=canonical, canonical=canonical_observation,
-        )
+        return PageObservation(url=UrlIdentity.normalize(url), status=status, title=title, meta_description=meta_description, h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt, internal_links=internal, security_headers=security_headers or {}, load_time_ms=load_time_ms, redirect=redirect, canonical_url=canonical, canonical=canonical_observation)
