@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from agents.public_site_scanner import PageObservation
+from agents.seo_action_policy import SeoActionPolicyAnalyzer
 from agents.seo_health import SeoHealthAnalyzer
 from agents.seo_priority import SeoPriorityAnalyzer
 from agents.site_audit_report import SiteAuditReport
-from agents.public_site_scanner import PageObservation
 
 
 @dataclass(frozen=True)
@@ -17,10 +18,12 @@ class SeoAction:
     severity: str
     priority: int
     action: str
+    mode: str
+    policy_reason: str
 
 
 class SiteAuditActionPlanner:
-    """تبدیل مشکلات SEO به فهرست اقدامات فوری و قابل اجرا."""
+    """تبدیل مشکلات SEO به فهرست اقدامات فوری همراه با سیاست اجرا."""
 
     _ACTIONS = {
         "پاسخ HTTP خطادار": "وضعیت HTTP و علت خطا را بررسی و صفحه/مسیر را اصلاح کنید.",
@@ -36,12 +39,14 @@ class SiteAuditActionPlanner:
     def __init__(self) -> None:
         self.health = SeoHealthAnalyzer()
         self.priority = SeoPriorityAnalyzer()
+        self.policy = SeoActionPolicyAnalyzer()
 
     def plan(self, observations: list[PageObservation]) -> tuple[SeoAction, ...]:
         actions: list[SeoAction] = []
         for page in observations:
             health = self.health.analyze(page)
             for item in self.priority.analyze(health):
+                policy = self.policy.decide(item)
                 actions.append(
                     SeoAction(
                         url=page.url,
@@ -49,12 +54,14 @@ class SiteAuditActionPlanner:
                         severity=item.severity,
                         priority=item.priority,
                         action=self._ACTIONS.get(item.issue, "مشکل را بررسی و اصلاح کنید."),
+                        mode=policy.mode,
+                        policy_reason=policy.reason,
                     )
                 )
         return tuple(sorted(actions, key=lambda item: (item.priority, item.url, item.issue)))
 
     def add_to_report(self, report: SiteAuditReport, observations: list[PageObservation]) -> SiteAuditReport:
-        """گزارش را با اقدامات پیشنهادی غنی می‌کند."""
+        """گزارش را با اقدامات و سیاست اجرای آن‌ها غنی می‌کند."""
         planned = [asdict(item) for item in self.plan(observations)]
         data: dict[str, Any] = report.to_dict()
         data["seo_actions"] = planned
