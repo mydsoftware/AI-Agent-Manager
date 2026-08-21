@@ -39,7 +39,17 @@ class PageObservation:
 class PublicSiteScanner:
     """Crawler کامل سایت عمومی با Queue، Sitemap، robots، Redirect، Canonical و گزارش ممیزی."""
 
-    def __init__(self, discovery: SiteDiscovery | None = None, robots_policy: RobotsPolicy | None = None) -> None:
+    # محدودیت پیش‌فرض وجود ندارد؛ Crawl تا خالی شدن صف ادامه می‌یابد.
+    # max_pages فقط محدودکننده اختیاری است.
+    MAX_PAGES: int | None = None
+
+    def __init__(
+        self,
+        discovery: SiteDiscovery | None = None,
+        robots_policy: RobotsPolicy | None = None,
+        max_pages: int | None = None,
+        http_get=None,
+    ) -> None:
         self.queue: deque[str] = deque()
         self.visited: set[str] = set()
         self.observations: list[PageObservation] = []
@@ -52,6 +62,9 @@ class PublicSiteScanner:
         self.report_builder = SiteAuditReportBuilder()
         self.html_renderer = SiteAuditHtmlRenderer()
         self.robots_discovered = False
+        # None یعنی بدون سقف؛ عدد مثبت یعنی توقف پس از N صفحه
+        self.max_pages = max_pages if max_pages is not None else self.MAX_PAGES
+        self.http_get = http_get
 
     def validate_url(self, url: str) -> str:
         value = self.normalize_url(url)
@@ -71,6 +84,86 @@ class PublicSiteScanner:
     @staticmethod
     def normalize_url(url: str) -> str:
         return UrlIdentity.normalize(url)
+
+    def limit_urls(self, urls: list[str]) -> list[str]:
+        """URLها را یکتا می‌کند و در صورت تعیین max_pages محدود می‌کند."""
+        unique: list[str] = []
+        seen: set[str] = set()
+        for url in urls:
+            normalized = UrlIdentity.normalize(url)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            unique.append(normalized)
+            if self.max_pages is not None and len(unique) >= self.max_pages:
+                break
+        return unique
+
+    def _fetch_page(self, url: str) -> PageObservation:
+        """یک صفحه را با http_get یا پاسخ شبیه‌سازی‌شده واکشی می‌کند."""
+        if self.http_get is None:
+            return self.build_observation(url=url, status=200, title="", links=[])
+        try:
+            response = self.http_get(url)
+        except Exception as error:
+            self.record_failure(url, error)
+            return self.build_observation(url=url, status=0, title="")
+        status = int(getattr(response, "status_code", getattr(response, "status", 200)) or 200)
+        text = getattr(response, "text", "") or ""
+        headers = dict(getattr(response, "headers", {}) or {})
+        location = headers.get("Location") or headers.get("location")
+        import re
+        title_m = re.search(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+        title = re.sub(r"\s+", " ", title_m.group(1)).strip() if title_m else ""
+        meta_m = re.search(r'<meta[^>]+name=["\']description["\'][^>]+content=["\']([^"\']*)["\']', text, re.I)
+        if not meta_m:
+            meta_m = re.search(r'<meta[^>]+content=["\']([^"\']*)["\'][^>]+name=["\']description["\']', text, re.I)
+        meta_description = meta_m.group(1).strip() if meta_m else ""
+        can_m = re.search(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']', text, re.I)
+        if not can_m:
+            can_m = re.search(r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']canonical["\']', text, re.I)
+        canonical_url = can_m.group(1) if can_m else None
+        links = re.findall(r'<a[^>]+href=["\']([^"\']+)["\']', text, re.I)
+        h1_count = len(re.findall(r"<h1\b", text, re.I))
+        imgs = re.findall(r"<img\b[^>]*>", text, re.I)
+        image_count = len(imgs)
+        images_without_alt = sum(1 for img in imgs if not re.search(r'alt=["\'][^"\']+["\']', img, re.I))
+        security_keys = {
+            "content-security-policy", "strict-transport-security",
+            "x-content-type-options", "x-frame-options", "referrer-policy",
+        }
+        security_headers = {k: v for k, v in headers.items() if k.lower() in security_keys}
+        return self.build_observation(
+            url=url, status=status, title=title, meta_description=meta_description,
+            h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt,
+            links=links, security_headers=security_headers, location=location,
+            canonical_url=canonical_url,
+        )
+
+    def scan(self, start_url: str, *, max_pages: int | None = None) -> SiteAuditReport:
+        """Crawl کامل سایت از URL شروع؛ تا خالی شدن صف ادامه می‌دهد مگر max_pages محدود کند.
+
+        محافظت SSRF حفظ می‌شود. max_pages فقط محدودکننده اختیاری است.
+        """
+        if max_pages is not None:
+            self.max_pages = max_pages
+        root = self.validate_url(start_url)
+        self.initialize(root)
+        while True:
+            if self.max_pages is not None and len(self.observations) >= self.max_pages:
+                break
+            url = self.next_url()
+            if url is None:
+                break
+            try:
+                # SSRF: هر URL جدید نیز قبل از واکشی اعتبارسنجی می‌شود
+                self.validate_url(url)
+            except (ValueError, PermissionError) as error:
+                self.record_failure(url, error)
+                continue
+            observation = self._fetch_page(url)
+            self.record_observation(observation)
+        return self.generate_report()
 
     def initialize(self, start_url: str) -> dict[str, list[str]]:
         """Discovery را اجرا و URLهای مجاز Sitemap را وارد Queue می‌کند."""
