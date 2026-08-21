@@ -6,10 +6,15 @@ from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from runtime import ManagerRuntime
 
 
-runtime = ManagerRuntime()
-team_api = AgentTeamAPI(runtime.agent_team, runtime.registry_manager)
-wordpress_connection_api = WordPressConnectionHttpApi()
-app = create_app(team_api, runtime, wordpress_connection_api)
+def create_manager_app() -> object:
+    """برنامه اصلی را با وابستگی‌های واقعی در زمان اجرا می‌سازد."""
+    runtime = ManagerRuntime()
+    team_api = AgentTeamAPI(runtime.agent_team, runtime.registry_manager)
+    wordpress_connection_api = WordPressConnectionHttpApi()
+    return create_app(team_api, runtime, wordpress_connection_api)
+
+
+app = create_manager_app()
 
 
 if __name__ == "__main__":
