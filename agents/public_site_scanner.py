@@ -4,7 +4,10 @@ import ipaddress
 import socket
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
+
+from agents.crawl_state import CrawlState
 
 
 @dataclass(frozen=True)
@@ -23,7 +26,7 @@ class PageObservation:
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با صف، حذف URL تکراری و امکان Resume."""
+    """Crawler کامل سایت عمومی با صف، حذف URL تکراری و Resume پایدار."""
 
     def __init__(self) -> None:
         self.queue: deque[str] = deque()
@@ -65,6 +68,22 @@ class PublicSiteScanner:
     def resume(self, urls: list[str]) -> None:
         """Crawl را از URLهای ذخیره‌شده ادامه می‌دهد."""
         self.enqueue(urls)
+
+    def save_state(self, path: str | Path) -> None:
+        """وضعیت فعلی صف، صفحات و خطاها را ذخیره می‌کند."""
+        CrawlState(
+            queue=list(self.queue),
+            visited=sorted(self.visited),
+            failed=dict(self.failed),
+        ).save(path)
+
+    def load_state(self, path: str | Path) -> None:
+        """وضعیت ذخیره‌شده را روی Scanner بازیابی می‌کند."""
+        state = CrawlState.load(path)
+        self.queue = deque()
+        self.visited = set(state.visited)
+        self.failed = dict(state.failed)
+        self.enqueue(state.queue)
 
     def next_url(self) -> str | None:
         """URL بعدی صف را برمی‌گرداند."""
