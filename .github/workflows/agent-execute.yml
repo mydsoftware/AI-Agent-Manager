@@ -7,6 +7,7 @@ on:
         description: "مسیر فایل درخواست در agent_requests؛ برای اجرای مستقیم"
         required: false
         type: string
+        default: "agent_requests/20260821-germantechsat-ir-audit.json"
   repository_dispatch:
     types: [execute-agent]
   push:
@@ -51,9 +52,12 @@ jobs:
           python - <<'PY'
           import json, os
           payload = json.loads(os.environ["CLIENT_PAYLOAD"])
-          required = ("request_id", "agent", "url", "execution_id")
+          required = ("request_id", "agent", "url")
           if any(not payload.get(key) for key in required):
               raise SystemExit("اطلاعات Request ناقص است.")
+          payload.setdefault("execution_id", f"exec-{payload['request_id']}")
+          if not payload.get("request"):
+              payload["request"] = payload.get("description") or f"ممیزی سایت {payload['url']}"
           path = f"agent_requests/{payload['request_id']}.json"
           with open(path, "w", encoding="utf-8") as file:
               json.dump(payload, file, ensure_ascii=False, indent=2)
@@ -74,26 +78,41 @@ jobs:
           test -n "$REQUEST_FILE"
           test -f "$REQUEST_FILE"
           echo "request_file=$REQUEST_FILE" >> "$GITHUB_OUTPUT"
+          echo "فایل درخواست: $REQUEST_FILE"
 
-      - name: اعتبارسنجی Request
+      - name: اعتبارسنجی و تکمیل Request
         shell: bash
+        env:
+          REQUEST_FILE: ${{ steps.request.outputs.request_file }}
         run: |
           python - <<'PY'
           import json, os
-          path = os.environ["REQUEST_FILE"]
-          data = json.load(open(path, encoding="utf-8"))
-          for key in ("request_id", "agent", "url", "execution_id"):
-              if not data.get(key):
-                  raise SystemExit(f"فیلد الزامی وجود ندارد: {key}")
+          from pathlib import Path
+          path = Path(os.environ["REQUEST_FILE"])
+          data = json.loads(path.read_text(encoding="utf-8"))
+          if not data.get("request_id"):
+              data["request_id"] = path.stem
+          if not data.get("execution_id"):
+              data["execution_id"] = f"exec-{data['request_id']}"
+          if not data.get("agent"):
+              data["agent"] = "website-audit"
+          if not data.get("url") and data.get("agent") == "website-audit":
+              raise SystemExit("برای website-audit فیلد url الزامی است.")
+          if not data.get("request"):
+              data["request"] = data.get("description") or (
+                  f"AI Agent Manager سایت {data.get('url', '')} را بررسی کن. "
+                  "مشکلات را در یک فایل و راه‌های اصلاح را در فایل دیگر بگو. گزارش فارسی."
+              )
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("Request آماده شد:")
+          print(json.dumps({k: data.get(k) for k in ("request_id", "execution_id", "agent", "url")}, ensure_ascii=False, indent=2))
           PY
-        env:
-          REQUEST_FILE: ${{ steps.request.outputs.request_file }}
 
       - name: اجرای Agent
         id: agent
         shell: bash
         run: |
-          mkdir -p agent_results
+          mkdir -p agent_results reports
           REQUEST_FILE="${{ steps.request.outputs.request_file }}"
           RESULT_FILE="agent_results/$(basename "$REQUEST_FILE" .json).result.json"
           set +e
@@ -128,7 +147,7 @@ jobs:
           except json.JSONDecodeError:
               result = {"report": raw}
           payload = json.dumps({
-              "execution_id": request["execution_id"],
+              "execution_id": request.get("execution_id") or request.get("request_id"),
               "request_id": request["request_id"],
               "status": "completed" if os.environ.get("AGENT_EXIT_CODE") == "0" else "failed",
               "result": result,
@@ -148,7 +167,8 @@ jobs:
         run: |
           git config user.name "AI-Agent-Manager"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add agent_results/*.result.json
+          git add agent_results/*.result.json || true
+          git add reports/*.md 2>/dev/null || true
           git diff --cached --quiet && exit 0
           git commit -m "run: publish agent execution result"
           git push
@@ -158,5 +178,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ai-agent-execution-result
-          path: agent_results/*.result.json
+          path: |
+            agent_results/*.result.json
+            reports/*.md
           if-no-files-found: ignore

@@ -1,0 +1,10 @@
+{
+  "request_id": "20260821-germantechsat-ir-audit",
+  "execution_id": "exec-20260821-germantechsat-ir-audit",
+  "agent": "website-audit",
+  "mode": "pre_contract",
+  "url": "https://germantechsat.ir",
+  "access": false,
+  "language": "fa",
+  "request": "AI Agent Manager سایت germantechsat.ir را بررسی کن. تمام مشکلات را در یک فایل فارسی و راه‌های اصلاح را در فایل فارسی دیگر بگو. هیچ تغییری روی سایت انجام نشود. گزارش کاملاً فارسی باشد."
+}
