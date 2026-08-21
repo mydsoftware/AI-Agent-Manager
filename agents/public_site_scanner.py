@@ -5,11 +5,12 @@ import socket
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse
 
 from agents.crawl_state import CrawlState
 from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
+from agents.url_identity import UrlIdentity
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ class PageObservation:
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با Queue، Sitemap، robots و Resume پایدار."""
+    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، URL Identity و Resume پایدار."""
 
     def __init__(self, discovery: SiteDiscovery | None = None, robots_policy: RobotsPolicy | None = None) -> None:
         self.queue: deque[str] = deque()
@@ -56,12 +57,7 @@ class PublicSiteScanner:
 
     @staticmethod
     def normalize_url(url: str) -> str:
-        value, _ = urldefrag(url.strip())
-        parsed = urlparse(value)
-        if not parsed.scheme or not parsed.netloc:
-            return value
-        path = parsed.path or "/"
-        return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, "", parsed.query, ""))
+        return UrlIdentity.normalize(url)
 
     def initialize(self, start_url: str) -> dict[str, list[str]]:
         """Discovery را اجرا و URLهای مجاز Sitemap را وارد Queue می‌کند."""
@@ -76,14 +72,17 @@ class PublicSiteScanner:
         self.robots_discovered = True
 
     def enqueue(self, urls: list[str]) -> None:
-        """URLهای جدید را فقط در صورت مجاز بودن robots وارد صف می‌کند."""
+        """URLهای جدید را با هویت یکتا و قوانین robots وارد صف می‌کند."""
+        queued = {UrlIdentity.normalize(item) for item in self.queue}
+        visited = {UrlIdentity.normalize(item) for item in self.visited}
         for url in urls:
-            normalized = self.normalize_url(url)
-            if not normalized or normalized in self.visited or normalized in self.queue:
+            normalized = UrlIdentity.normalize(url)
+            if not normalized or normalized in visited or normalized in queued:
                 continue
             if self.robots_discovered and not self.robots_policy.is_allowed(normalized):
                 continue
             self.queue.append(normalized)
+            queued.add(normalized)
 
     def resume(self, urls: list[str]) -> None:
         """Crawl را از URLهای ذخیره‌شده ادامه می‌دهد."""
@@ -116,7 +115,7 @@ class PublicSiteScanner:
 
     def record_failure(self, url: str, error: Exception | str) -> None:
         """خطای یک صفحه را ثبت می‌کند بدون اینکه کل Crawl متوقف شود."""
-        self.failed[self.normalize_url(url)] = str(error)
+        self.failed[UrlIdentity.normalize(url)] = str(error)
 
     def build_observation(
         self, *, url: str, status: int, title: str = "", meta_description: str = "",
@@ -127,13 +126,16 @@ class PublicSiteScanner:
         """مشاهدات Browser را به مدل داخلی تبدیل می‌کند."""
         base = urlparse(url)
         internal: list[str] = []
+        identities: set[str] = set()
         for link in links or []:
-            absolute = self.normalize_url(urljoin(url, link))
+            absolute = UrlIdentity.normalize(urljoin(url, link))
             parsed = urlparse(absolute)
-            if parsed.hostname == base.hostname and absolute not in internal:
+            identity = UrlIdentity.normalize(absolute)
+            if parsed.hostname == base.hostname and identity not in identities:
                 internal.append(absolute)
+                identities.add(identity)
         return PageObservation(
-            url=self.normalize_url(url), status=status, title=title, meta_description=meta_description,
+            url=UrlIdentity.normalize(url), status=status, title=title, meta_description=meta_description,
             h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt,
             internal_links=internal, security_headers=security_headers or {}, load_time_ms=load_time_ms,
         )
