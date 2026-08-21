@@ -11,6 +11,7 @@ from agents.canonical_analyzer import CanonicalAnalyzer, CanonicalObservation
 from agents.crawl_state import CrawlState
 from agents.duplicate_analyzer import DuplicateAnalyzer, DuplicateGroup
 from agents.redirect_tracker import RedirectObservation, RedirectTracker
+from agents.site_audit_report import SiteAuditReport, SiteAuditReportBuilder
 from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
 from agents.url_identity import UrlIdentity
@@ -35,7 +36,7 @@ class PageObservation:
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، Redirect، Canonical و URL Identity."""
+    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، Redirect، Canonical و گزارش ممیزی."""
 
     def __init__(self, discovery: SiteDiscovery | None = None, robots_policy: RobotsPolicy | None = None) -> None:
         self.queue: deque[str] = deque()
@@ -47,6 +48,7 @@ class PublicSiteScanner:
         self.redirect_tracker = RedirectTracker()
         self.canonical_analyzer = CanonicalAnalyzer()
         self.duplicate_analyzer = DuplicateAnalyzer()
+        self.report_builder = SiteAuditReportBuilder()
         self.robots_discovered = False
 
     def validate_url(self, url: str) -> str:
@@ -132,6 +134,15 @@ class PublicSiteScanner:
     def duplicate_groups(self) -> list[DuplicateGroup]:
         """گروه‌های Duplicate کشف‌شده از کل صفحات اسکن‌شده را برمی‌گرداند."""
         return self.duplicate_analyzer.analyze(self.observations)
+
+    def generate_report(self) -> SiteAuditReport:
+        """گزارش کامل ممیزی را از نتایج فعلی Scanner تولید می‌کند."""
+        return self.report_builder.build(
+            self.observations,
+            self.failed,
+            self.duplicate_groups(),
+            self.redirect_tracker.observations,
+        )
 
     def record_failure(self, url: str, error: Exception | str) -> None:
         """خطای یک صفحه را ثبت می‌کند بدون اینکه کل Crawl متوقف شود."""
