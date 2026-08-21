@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-import time
+from collections import deque
 from dataclasses import dataclass, field
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 
 @dataclass(frozen=True)
@@ -23,12 +23,16 @@ class PageObservation:
 
 
 class PublicSiteScanner:
-    """اسکنر محدود و فقط خواندنی سایت عمومی برای ممیزی قبل از قرارداد."""
-    MAX_PAGES = 10
-    DEFAULT_TIMEOUT_MS = 15000
+    """Crawler کامل سایت عمومی با صف، حذف URL تکراری و امکان Resume."""
+
+    def __init__(self) -> None:
+        self.queue: deque[str] = deque()
+        self.visited: set[str] = set()
+        self.observations: list[PageObservation] = []
+        self.failed: dict[str, str] = {}
 
     def validate_url(self, url: str) -> str:
-        value = url.strip()
+        value = self.normalize_url(url)
         parsed = urlparse(value)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("URL عمومی HTTP/HTTPS معتبر نیست.")
@@ -42,6 +46,43 @@ class PublicSiteScanner:
                 raise PermissionError("اسکن آدرس‌های داخلی یا خصوصی مجاز نیست.")
         return value
 
+    @staticmethod
+    def normalize_url(url: str) -> str:
+        value, _ = urldefrag(url.strip())
+        parsed = urlparse(value)
+        if not parsed.scheme or not parsed.netloc:
+            return value
+        path = parsed.path or "/"
+        return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, "", parsed.query, ""))
+
+    def enqueue(self, urls: list[str]) -> None:
+        """URLهای جدید را بدون تکرار وارد صف Crawl می‌کند."""
+        for url in urls:
+            normalized = self.normalize_url(url)
+            if normalized and normalized not in self.visited and normalized not in self.queue:
+                self.queue.append(normalized)
+
+    def resume(self, urls: list[str]) -> None:
+        """Crawl را از URLهای ذخیره‌شده ادامه می‌دهد."""
+        self.enqueue(urls)
+
+    def next_url(self) -> str | None:
+        """URL بعدی صف را برمی‌گرداند."""
+        if not self.queue:
+            return None
+        url = self.queue.popleft()
+        self.visited.add(url)
+        return url
+
+    def record_observation(self, observation: PageObservation) -> None:
+        """نتیجه صفحه را ثبت و لینک‌های داخلی آن را وارد صف می‌کند."""
+        self.observations.append(observation)
+        self.enqueue(observation.internal_links)
+
+    def record_failure(self, url: str, error: Exception | str) -> None:
+        """خطای یک صفحه را ثبت می‌کند بدون اینکه کل Crawl متوقف شود."""
+        self.failed[self.normalize_url(url)] = str(error)
+
     def build_observation(
         self, *, url: str, status: int, title: str = "", meta_description: str = "",
         h1_count: int = 0, image_count: int = 0, images_without_alt: int = 0,
@@ -52,92 +93,12 @@ class PublicSiteScanner:
         base = urlparse(url)
         internal: list[str] = []
         for link in links or []:
-            absolute = urljoin(url, link)
+            absolute = self.normalize_url(urljoin(url, link))
             parsed = urlparse(absolute)
             if parsed.hostname == base.hostname and absolute not in internal:
                 internal.append(absolute)
         return PageObservation(
-            url=url, status=status, title=title, meta_description=meta_description,
+            url=self.normalize_url(url), status=status, title=title, meta_description=meta_description,
             h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt,
             internal_links=internal, security_headers=security_headers or {}, load_time_ms=load_time_ms,
         )
-
-    def limit_urls(self, urls: list[str]) -> list[str]:
-        """تعداد صفحات ممیزی اولیه را محدود می‌کند."""
-        return list(dict.fromkeys(urls))[: self.MAX_PAGES]
-
-    def scan_with_browser(self, url: str, *, max_pages: int | None = None, timeout_ms: int | None = None) -> list[PageObservation]:
-        """با Playwright فقط صفحات عمومی همان دامنه را می‌خواند."""
-        start_url = self.validate_url(url)
-        page_limit = min(max_pages or self.MAX_PAGES, self.MAX_PAGES)
-        timeout = timeout_ms or self.DEFAULT_TIMEOUT_MS
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError as error:
-            raise RuntimeError("Playwright نصب نشده است.") from error
-
-        observations: list[PageObservation] = []
-        queue = [start_url]
-        seen: set[str] = set()
-        origin = urlparse(start_url)
-
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context(ignore_https_errors=False)
-            page = context.new_page()
-            page.set_default_timeout(timeout)
-            page.set_default_navigation_timeout(timeout)
-
-            def document_request(route):
-                request = route.request
-                if request.resource_type in {"document", "stylesheet", "image", "script", "font"}:
-                    return route.continue_()
-                return route.abort()
-
-            page.route("**/*", document_request)
-            try:
-                while queue and len(observations) < page_limit:
-                    current = queue.pop(0)
-                    if current in seen:
-                        continue
-                    seen.add(current)
-                    parsed = urlparse(current)
-                    if parsed.hostname != origin.hostname or parsed.scheme != origin.scheme:
-                        continue
-
-                    started = time.perf_counter()
-                    response = page.goto(current, wait_until="domcontentloaded")
-                    elapsed = int((time.perf_counter() - started) * 1000)
-                    if response is None:
-                        continue
-
-                    headers = {key.lower(): value for key, value in response.headers.items()}
-                    title = page.title()
-                    meta = page.locator('meta[name="description"]').first.get_attribute("content") or ""
-                    h1_count = page.locator("h1").count()
-                    image_count = page.locator("img").count()
-                    images_without_alt = page.locator("img:not([alt])").count()
-                    links = page.locator("a[href]").evaluate_all("els => els.map(e => e.href)")
-                    observation = self.build_observation(
-                        url=current,
-                        status=response.status,
-                        title=title,
-                        meta_description=meta,
-                        h1_count=h1_count,
-                        image_count=image_count,
-                        images_without_alt=images_without_alt,
-                        links=links,
-                        security_headers={key: headers[key] for key in (
-                            "content-security-policy", "strict-transport-security", "x-content-type-options",
-                            "x-frame-options", "referrer-policy", "permissions-policy"
-                        ) if key in headers},
-                        load_time_ms=elapsed,
-                    )
-                    observations.append(observation)
-                    for link in observation.internal_links:
-                        if link not in seen and link not in queue and len(queue) + len(observations) < page_limit:
-                            queue.append(link)
-            finally:
-                context.close()
-                browser.close()
-        return observations
