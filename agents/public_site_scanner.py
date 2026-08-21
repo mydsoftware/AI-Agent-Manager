@@ -11,6 +11,7 @@ from agents.canonical_analyzer import CanonicalAnalyzer, CanonicalObservation
 from agents.crawl_state import CrawlState
 from agents.duplicate_analyzer import DuplicateAnalyzer, DuplicateGroup
 from agents.redirect_tracker import RedirectObservation, RedirectTracker
+from agents.site_audit_html import SiteAuditHtmlRenderer
 from agents.site_audit_report import SiteAuditReport, SiteAuditReportBuilder
 from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
@@ -49,6 +50,7 @@ class PublicSiteScanner:
         self.canonical_analyzer = CanonicalAnalyzer()
         self.duplicate_analyzer = DuplicateAnalyzer()
         self.report_builder = SiteAuditReportBuilder()
+        self.html_renderer = SiteAuditHtmlRenderer()
         self.robots_discovered = False
 
     def validate_url(self, url: str) -> str:
@@ -143,6 +145,14 @@ class PublicSiteScanner:
             self.duplicate_groups(),
             self.redirect_tracker.observations,
         )
+
+    def generate_html_report(self, path: str | Path, title: str = "گزارش ممیزی سایت") -> Path:
+        """گزارش HTML فارسی را تولید و در مسیر مشخص ذخیره می‌کند."""
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        html = self.html_renderer.render(self.generate_report(), title=title)
+        destination.write_text(html, encoding="utf-8")
+        return destination
 
     def record_failure(self, url: str, error: Exception | str) -> None:
         """خطای یک صفحه را ثبت می‌کند بدون اینکه کل Crawl متوقف شود."""
