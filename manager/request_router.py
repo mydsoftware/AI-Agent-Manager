@@ -30,6 +30,12 @@ def route_request(request: str) -> RoutedRequest:
             "ممیزی سایت",
             "audit website",
             "website audit",
+            "مشکلاتشو",
+            "مشکلاتش را",
+            "مشکلاتش رو",
+            "راه‌های اصلاح",
+            "راههای اصلاح",
+            "راه حل اصلاح",
         )
     )
     if not is_website_audit:
@@ -57,11 +63,27 @@ def route_request(request: str) -> RoutedRequest:
                 url = candidate_url
                 break
 
+    access = any(
+        phrase in text
+        for phrase in (
+            "دسترسی دادم",
+            "دسترسی فعال",
+            "خودت اصلاح",
+            "خودت اصلاحشون",
+            "اصلاحشون کن",
+            "اصلاح‌شان کن",
+            "اصلاحشان کن",
+            "access=true",
+            "با دسترسی",
+        )
+    )
+    mode = "post_contract" if access else "pre_contract"
+
     return RoutedRequest(
         agent="website-audit",
         url=url,
-        mode="pre_contract",
-        access=False,
+        mode=mode,
+        access=access,
         language="fa",
         description=text,
     )
