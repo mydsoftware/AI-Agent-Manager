@@ -17,6 +17,7 @@ def test_site_report_contains_page_and_global_seo_health():
             url="https://example.com/bad",
             status=404,
         )
+    )
 
     report = scanner.generate_report()
 
