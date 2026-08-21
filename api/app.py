@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from api.agent_team_api import AgentTeamAPI
 from api.http import create_app
+from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from runtime import ManagerRuntime
 
 
 runtime = ManagerRuntime()
 team_api = AgentTeamAPI(runtime.agent_team, runtime.registry_manager)
-app = create_app(team_api, runtime)
+wordpress_connection_api = WordPressConnectionHttpApi()
+app = create_app(team_api, runtime, wordpress_connection_api)
 
 
 if __name__ == "__main__":
