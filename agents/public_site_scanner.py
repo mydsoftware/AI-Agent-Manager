@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from agents.crawl_state import CrawlState
+from agents.redirect_tracker import RedirectObservation, RedirectTracker
 from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
 from agents.url_identity import UrlIdentity
@@ -26,10 +27,12 @@ class PageObservation:
     internal_links: list[str] = field(default_factory=list)
     security_headers: dict[str, str] = field(default_factory=dict)
     load_time_ms: int = 0
+    redirect: RedirectObservation | None = None
+    canonical_url: str | None = None
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، URL Identity و Resume پایدار."""
+    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، Redirect و URL Identity."""
 
     def __init__(self, discovery: SiteDiscovery | None = None, robots_policy: RobotsPolicy | None = None) -> None:
         self.queue: deque[str] = deque()
@@ -38,6 +41,7 @@ class PublicSiteScanner:
         self.failed: dict[str, str] = {}
         self.discovery = discovery or SiteDiscovery()
         self.robots_policy = robots_policy or RobotsPolicy()
+        self.redirect_tracker = RedirectTracker()
         self.robots_discovered = False
 
     def validate_url(self, url: str) -> str:
@@ -108,6 +112,13 @@ class PublicSiteScanner:
         self.visited.add(url)
         return url
 
+    def record_redirect(self, source_url: str, status: int, location: str | None) -> RedirectObservation | None:
+        """Redirect صفحه را ثبت می‌کند و مقصد را برای Crawl بعدی وارد Queue می‌کند."""
+        observation = self.redirect_tracker.record(source_url, status, location)
+        if observation is not None:
+            self.enqueue([observation.destination_url])
+        return observation
+
     def record_observation(self, observation: PageObservation) -> None:
         """نتیجه صفحه را ثبت و لینک‌های داخلی آن را وارد صف می‌کند."""
         self.observations.append(observation)
@@ -121,9 +132,9 @@ class PublicSiteScanner:
         self, *, url: str, status: int, title: str = "", meta_description: str = "",
         h1_count: int = 0, image_count: int = 0, images_without_alt: int = 0,
         links: list[str] | None = None, security_headers: dict[str, str] | None = None,
-        load_time_ms: int = 0,
+        load_time_ms: int = 0, location: str | None = None, canonical_url: str | None = None,
     ) -> PageObservation:
-        """مشاهدات Browser را به مدل داخلی تبدیل می‌کند."""
+        """مشاهدات Browser/HTTP را به مدل داخلی تبدیل می‌کند."""
         base = urlparse(url)
         internal: list[str] = []
         identities: set[str] = set()
@@ -134,8 +145,11 @@ class PublicSiteScanner:
             if parsed.hostname == base.hostname and identity not in identities:
                 internal.append(absolute)
                 identities.add(identity)
+        redirect = self.record_redirect(url, status, location)
+        canonical = UrlIdentity.normalize(urljoin(url, canonical_url)) if canonical_url else None
         return PageObservation(
             url=UrlIdentity.normalize(url), status=status, title=title, meta_description=meta_description,
             h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt,
             internal_links=internal, security_headers=security_headers or {}, load_time_ms=load_time_ms,
+            redirect=redirect, canonical_url=canonical,
         )
