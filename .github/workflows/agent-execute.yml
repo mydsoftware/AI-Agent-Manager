@@ -105,7 +105,7 @@ jobs:
           exit "$CODE"
 
       - name: ارسال نتیجه به Manager
-        if: always() && hashFiles('agent_results/*.result.json') != '' && secrets.MANAGER_CALLBACK_URL != '' && secrets.MANAGER_API_KEY != ''
+        if: always() && hashFiles('agent_results/*.result.json') != ''
         shell: bash
         env:
           MANAGER_CALLBACK_URL: ${{ secrets.MANAGER_CALLBACK_URL }}
@@ -113,6 +113,10 @@ jobs:
           REQUEST_FILE: ${{ steps.request.outputs.request_file }}
           AGENT_EXIT_CODE: ${{ steps.agent.outputs.exit_code }}
         run: |
+          if [ -z "${MANAGER_CALLBACK_URL}" ] || [ -z "${MANAGER_API_KEY}" ]; then
+            echo "Callback غیرفعال است (MANAGER_CALLBACK_URL یا MANAGER_API_KEY تنظیم نشده)."
+            exit 0
+          fi
           python - <<'PY'
           import json, os, urllib.request
           from pathlib import Path
