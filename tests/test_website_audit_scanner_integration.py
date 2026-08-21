@@ -24,7 +24,13 @@ def test_scanner_observation_becomes_farsi_audit_finding():
     assert any(f.category == "Performance" for f in report.findings)
 
 
-def test_scanner_limit_is_respected():
+def test_scanner_limit_is_respected_when_max_pages_set():
+    scanner = PublicSiteScanner(max_pages=5)
+    urls = [f"https://example.com/{i}" for i in range(20)]
+    assert len(scanner.limit_urls(urls)) == 5
+
+
+def test_scanner_default_crawl_has_no_artificial_cap():
     scanner = PublicSiteScanner()
     urls = [f"https://example.com/{i}" for i in range(20)]
-    assert len(scanner.limit_urls(urls)) == scanner.MAX_PAGES
+    assert len(scanner.limit_urls(urls)) == 20

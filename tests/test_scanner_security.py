@@ -29,3 +29,9 @@ def test_duplicate_urls_are_removed_before_limit():
     scanner = PublicSiteScanner()
     urls = ["https://example.com/a", "https://example.com/a", "https://example.com/b"]
     assert scanner.limit_urls(urls) == ["https://example.com/a", "https://example.com/b"]
+
+
+def test_limit_urls_with_cap():
+    scanner = PublicSiteScanner(max_pages=1)
+    urls = ["https://example.com/a", "https://example.com/b"]
+    assert scanner.limit_urls(urls) == ["https://example.com/a"]
