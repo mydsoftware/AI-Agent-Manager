@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from agents.wordpress_connection import WordPressConnectionApi, WordPressConnectionConfig
+
+from agents.wordpress_connection import WordPressConnectionConfig
+from agents.wordpress_connection_api import WordPressConnectionApi
 
 
 @dataclass(frozen=True)
 class ConnectionHttpResponse:
+    """پاسخ HTTP لایه اتصال WordPress."""
+
     status: int
     body: dict[str, object]
 
@@ -17,6 +21,7 @@ class WordPressConnectionHttpApi:
         self.api = api or WordPressConnectionApi()
 
     def post_check(self, payload: dict[str, object]) -> ConnectionHttpResponse:
+        """Payload را اعتبارسنجی و برای بررسی اتصال به API داخلی ارسال می‌کند."""
         required = ("site_url", "username", "application_password", "agent_token")
         if any(not str(payload.get(key, "")).strip() for key in required):
             return ConnectionHttpResponse(400, {"message": "همه اطلاعات اتصال الزامی است."})
