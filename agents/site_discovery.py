@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import re
 from urllib.parse import urljoin, urlparse
 
@@ -78,6 +79,16 @@ class SiteDiscovery:
             response = self.http_get(url, timeout=15)
             if getattr(response, "status_code", 0) >= 400:
                 return None
-            return str(getattr(response, "text", ""))
+            content = getattr(response, "content", None)
+            content_encoding = str(getattr(response, "headers", {}).get("Content-Encoding", "")).lower()
+            if isinstance(content, (bytes, bytearray)):
+                raw = bytes(content)
+                if url.lower().endswith(".gz") or content_encoding == "gzip" or raw[:2] == b"\x1f\x8b":
+                    raw = gzip.decompress(raw)
+                return raw.decode("utf-8", errors="replace")
+            text = str(getattr(response, "text", ""))
+            if url.lower().endswith(".gz"):
+                return gzip.decompress(text.encode("latin1")).decode("utf-8", errors="replace")
+            return text
         except Exception:
             return None
