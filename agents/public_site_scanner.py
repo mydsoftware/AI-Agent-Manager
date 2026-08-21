@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
+from agents.canonical_analyzer import CanonicalAnalyzer, CanonicalObservation
 from agents.crawl_state import CrawlState
 from agents.redirect_tracker import RedirectObservation, RedirectTracker
 from agents.robots_policy import RobotsPolicy
@@ -29,10 +30,11 @@ class PageObservation:
     load_time_ms: int = 0
     redirect: RedirectObservation | None = None
     canonical_url: str | None = None
+    canonical: CanonicalObservation | None = None
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، Redirect و URL Identity."""
+    """Crawler کامل سایت عمومی با Queue، Sitemap، robots، Redirect، Canonical و URL Identity."""
 
     def __init__(self, discovery: SiteDiscovery | None = None, robots_policy: RobotsPolicy | None = None) -> None:
         self.queue: deque[str] = deque()
@@ -42,6 +44,7 @@ class PublicSiteScanner:
         self.discovery = discovery or SiteDiscovery()
         self.robots_policy = robots_policy or RobotsPolicy()
         self.redirect_tracker = RedirectTracker()
+        self.canonical_analyzer = CanonicalAnalyzer()
         self.robots_discovered = False
 
     def validate_url(self, url: str) -> str:
@@ -147,9 +150,10 @@ class PublicSiteScanner:
                 identities.add(identity)
         redirect = self.record_redirect(url, status, location)
         canonical = UrlIdentity.normalize(urljoin(url, canonical_url)) if canonical_url else None
+        canonical_observation = self.canonical_analyzer.analyze(url, canonical_url)
         return PageObservation(
             url=UrlIdentity.normalize(url), status=status, title=title, meta_description=meta_description,
             h1_count=h1_count, image_count=image_count, images_without_alt=images_without_alt,
             internal_links=internal, security_headers=security_headers or {}, load_time_ms=load_time_ms,
-            redirect=redirect, canonical_url=canonical,
+            redirect=redirect, canonical_url=canonical, canonical=canonical_observation,
         )
