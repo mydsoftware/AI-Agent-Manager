@@ -12,11 +12,19 @@ class SiteAuditHtmlRenderer:
         def esc(value: object) -> str:
             return escape(str(value), quote=True)
 
+        # ادغام اطلاعات صفحه با SEO برای نمایش عنوان و Canonical
+        pages_by_url = {item.get("url"): item for item in report.pages}
         page_rows = "".join(
-            f"<tr><td>{esc(item['url'])}</td><td>{esc(item.get('status', '—'))}</td>"
-            f"<td>{esc(item.get('title', ''))}</td><td>{esc(item.get('canonical_url') or '—')}</td>"
-            f"<td>{esc(item.get('score', item.get('seo_score', '—')))}</td>"
-            f"<td>{esc(item.get('status', item.get('seo_status', '—')))}</td></tr>"
+            (
+                lambda seo, page: (
+                    f"<tr><td>{esc(seo['url'])}</td>"
+                    f"<td>{esc(page.get('status', seo.get('http_status', '—')))}</td>"
+                    f"<td>{esc(page.get('title', ''))}</td>"
+                    f"<td>{esc(page.get('canonical_url') or '—')}</td>"
+                    f"<td>{esc(seo.get('score', '—'))}</td>"
+                    f"<td>{esc(seo.get('status', '—'))}</td></tr>"
+                )
+            )(item, pages_by_url.get(item.get("url"), {}))
             for item in report.seo_items
         ) or '<tr><td colspan="6">صفحه‌ای ثبت نشده است.</td></tr>'
 
