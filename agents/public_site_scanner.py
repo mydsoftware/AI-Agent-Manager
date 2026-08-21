@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 from agents.crawl_state import CrawlState
+from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
 
 
@@ -27,14 +28,16 @@ class PageObservation:
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با Queue، Sitemap و Resume پایدار."""
+    """Crawler کامل سایت عمومی با Queue، Sitemap، robots و Resume پایدار."""
 
-    def __init__(self, discovery: SiteDiscovery | None = None) -> None:
+    def __init__(self, discovery: SiteDiscovery | None = None, robots_policy: RobotsPolicy | None = None) -> None:
         self.queue: deque[str] = deque()
         self.visited: set[str] = set()
         self.observations: list[PageObservation] = []
         self.failed: dict[str, str] = {}
         self.discovery = discovery or SiteDiscovery()
+        self.robots_policy = robots_policy or RobotsPolicy()
+        self.robots_discovered = False
 
     def validate_url(self, url: str) -> str:
         value = self.normalize_url(url)
@@ -61,18 +64,26 @@ class PublicSiteScanner:
         return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, "", parsed.query, ""))
 
     def initialize(self, start_url: str) -> dict[str, list[str]]:
-        """Discovery را اجرا و URLهای Sitemap را مستقیماً وارد Queue می‌کند."""
+        """Discovery را اجرا و URLهای مجاز Sitemap را وارد Queue می‌کند."""
         root = self.validate_url(start_url)
         discovered = self.discovery.discover(root)
+        self._load_robots_policy(discovered.get("robots", []))
         self.enqueue([root, *discovered.get("urls", [])])
         return discovered
 
+    def _load_robots_policy(self, lines: list[str]) -> None:
+        self.robots_policy.parse("\n".join(lines))
+        self.robots_discovered = True
+
     def enqueue(self, urls: list[str]) -> None:
-        """URLهای جدید را بدون تکرار وارد صف Crawl می‌کند."""
+        """URLهای جدید را فقط در صورت مجاز بودن robots وارد صف می‌کند."""
         for url in urls:
             normalized = self.normalize_url(url)
-            if normalized and normalized not in self.visited and normalized not in self.queue:
-                self.queue.append(normalized)
+            if not normalized or normalized in self.visited or normalized in self.queue:
+                continue
+            if self.robots_discovered and not self.robots_policy.is_allowed(normalized):
+                continue
+            self.queue.append(normalized)
 
     def resume(self, urls: list[str]) -> None:
         """Crawl را از URLهای ذخیره‌شده ادامه می‌دهد."""
