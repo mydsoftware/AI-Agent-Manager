@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 
 from agents.canonical_analyzer import CanonicalAnalyzer, CanonicalObservation
 from agents.crawl_state import CrawlState
+from agents.duplicate_analyzer import DuplicateAnalyzer, DuplicateGroup
 from agents.redirect_tracker import RedirectObservation, RedirectTracker
 from agents.robots_policy import RobotsPolicy
 from agents.site_discovery import SiteDiscovery
@@ -45,6 +46,7 @@ class PublicSiteScanner:
         self.robots_policy = robots_policy or RobotsPolicy()
         self.redirect_tracker = RedirectTracker()
         self.canonical_analyzer = CanonicalAnalyzer()
+        self.duplicate_analyzer = DuplicateAnalyzer()
         self.robots_discovered = False
 
     def validate_url(self, url: str) -> str:
@@ -126,6 +128,10 @@ class PublicSiteScanner:
         """نتیجه صفحه را ثبت و لینک‌های داخلی آن را وارد صف می‌کند."""
         self.observations.append(observation)
         self.enqueue(observation.internal_links)
+
+    def duplicate_groups(self) -> list[DuplicateGroup]:
+        """گروه‌های Duplicate کشف‌شده از کل صفحات اسکن‌شده را برمی‌گرداند."""
+        return self.duplicate_analyzer.analyze(self.observations)
 
     def record_failure(self, url: str, error: Exception | str) -> None:
         """خطای یک صفحه را ثبت می‌کند بدون اینکه کل Crawl متوقف شود."""
