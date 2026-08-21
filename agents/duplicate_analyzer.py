@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from agents.public_site_scanner import PageObservation
 from agents.url_identity import UrlIdentity
+
+if TYPE_CHECKING:
+    from agents.public_site_scanner import PageObservation
 
 
 @dataclass(frozen=True)
