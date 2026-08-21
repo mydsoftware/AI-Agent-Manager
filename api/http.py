@@ -3,13 +3,19 @@ from __future__ import annotations
 from flask import Flask, jsonify, request
 
 from api.agent_team_api import AgentTeamAPI
+from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from runtime import ManagerRuntime
 
 
-def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None) -> Flask:
+def create_app(
+    team_api: AgentTeamAPI,
+    runtime: ManagerRuntime | None = None,
+    wordpress_connection_api: WordPressConnectionHttpApi | None = None,
+) -> Flask:
     """برنامه HTTP مدیریتی و اجرای درخواست‌های Manager را می‌سازد."""
     app = Flask(__name__)
     manager_runtime = runtime or ManagerRuntime()
+    connection_api = wordpress_connection_api or WordPressConnectionHttpApi()
 
     @app.get("/api/agents")
     def list_agents():
@@ -32,6 +38,14 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None) ->
             return jsonify({"error": "فیلد request الزامی است."}), 400
         report = manager_runtime.run(request_text, agent)
         return jsonify(report.to_dict())
+
+    @app.post("/api/wordpress/connection/check")
+    def wordpress_connection_check():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"message": "بدنه درخواست باید Object باشد."}), 400
+        result = connection_api.post_check(payload)
+        return jsonify(result.body), result.status
 
     @app.get("/api/health")
     def health():
