@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agents.public_site_scanner import PageObservation
+from agents.page_observation import PageObservation
 
 
 @dataclass(frozen=True)
