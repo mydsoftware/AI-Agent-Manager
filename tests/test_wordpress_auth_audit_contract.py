@@ -1,17 +1,13 @@
-<?php
-/**
- * قرارداد امنیتی Writer وردپرس را به صورت ایستا بررسی می‌کند.
- */
+from pathlib import Path
 
-declare(strict_types=1);
 
-$auth = file_get_contents(__DIR__ . '/../wordpress-plugin/ai-agent-manager-seo/includes/class-ai-agent-auth.php');
-$log  = file_get_contents(__DIR__ . '/../wordpress-plugin/ai-agent-manager-seo/includes/class-ai-agent-audit-log.php');
+def test_wordpress_auth_and_audit_contract():
+    plugin_root = Path("wordpress-plugin/ai-agent-manager-seo/includes")
+    auth = (plugin_root / "class-ai-agent-auth.php").read_text(encoding="utf-8")
+    log = (plugin_root / "class-ai-agent-audit-log.php").read_text(encoding="utf-8")
 
-if (strpos($auth, "X-AI-Agent-Token") === false || strpos($auth, 'hash_equals') === false) {
-    throw new RuntimeException('احراز هویت اختصاصی AI Agent ناقص است.');
-}
-
-if (strpos($log, 'ai_agent_manager_audit_log') === false || strpos($log, 'application_password') !== false || strpos($log, 'ai_agent_manager_token') !== false) {
-    throw new RuntimeException('Audit Log نباید توکن یا رمز را ذخیره کند.');
-}
+    assert "X-AI-Agent-Token" in auth
+    assert "hash_equals" in auth
+    assert "ai_agent_manager_audit_log" in log
+    assert "application_password" not in log
+    assert "ai_agent_manager_token" not in log
