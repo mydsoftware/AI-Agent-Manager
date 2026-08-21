@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse, urlunparse
 
 from agents.crawl_state import CrawlState
+from agents.site_discovery import SiteDiscovery
 
 
 @dataclass(frozen=True)
@@ -26,13 +27,14 @@ class PageObservation:
 
 
 class PublicSiteScanner:
-    """Crawler کامل سایت عمومی با صف، حذف URL تکراری و Resume پایدار."""
+    """Crawler کامل سایت عمومی با Queue، Sitemap و Resume پایدار."""
 
-    def __init__(self) -> None:
+    def __init__(self, discovery: SiteDiscovery | None = None) -> None:
         self.queue: deque[str] = deque()
         self.visited: set[str] = set()
         self.observations: list[PageObservation] = []
         self.failed: dict[str, str] = {}
+        self.discovery = discovery or SiteDiscovery()
 
     def validate_url(self, url: str) -> str:
         value = self.normalize_url(url)
@@ -58,6 +60,13 @@ class PublicSiteScanner:
         path = parsed.path or "/"
         return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), path, "", parsed.query, ""))
 
+    def initialize(self, start_url: str) -> dict[str, list[str]]:
+        """Discovery را اجرا و URLهای Sitemap را مستقیماً وارد Queue می‌کند."""
+        root = self.validate_url(start_url)
+        discovered = self.discovery.discover(root)
+        self.enqueue([root, *discovered.get("urls", [])])
+        return discovered
+
     def enqueue(self, urls: list[str]) -> None:
         """URLهای جدید را بدون تکرار وارد صف Crawl می‌کند."""
         for url in urls:
@@ -71,11 +80,7 @@ class PublicSiteScanner:
 
     def save_state(self, path: str | Path) -> None:
         """وضعیت فعلی صف، صفحات و خطاها را ذخیره می‌کند."""
-        CrawlState(
-            queue=list(self.queue),
-            visited=sorted(self.visited),
-            failed=dict(self.failed),
-        ).save(path)
+        CrawlState(queue=list(self.queue), visited=sorted(self.visited), failed=dict(self.failed)).save(path)
 
     def load_state(self, path: str | Path) -> None:
         """وضعیت ذخیره‌شده را روی Scanner بازیابی می‌کند."""
