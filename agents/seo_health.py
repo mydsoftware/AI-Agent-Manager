@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from agents.public_site_scanner import PageObservation
+if TYPE_CHECKING:
+    from agents.public_site_scanner import PageObservation
 
 
 @dataclass(frozen=True)
