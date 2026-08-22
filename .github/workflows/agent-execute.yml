@@ -1,4 +1,4 @@
-name: AI-Agent-Manager Execute
+name: ایجنت بررسی سایت
 
 on:
   workflow_dispatch:
