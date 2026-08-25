@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# این فایل یک ماژول معمولی است، نه فایل تست
+__test__ = False
+
 from dataclasses import dataclass
 from typing import Callable, Iterable
 

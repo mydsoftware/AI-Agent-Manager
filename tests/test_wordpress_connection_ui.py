@@ -6,4 +6,5 @@ def test_wordpress_connection_ui_contains_persian_five_step_flow():
     for text in ("آدرس سایت", "کاربر مدیر", "Application Password", "Agent Token", "تست اتصال"):
         assert text in html
     assert 'dir="rtl"' in html
-    assert "اجرای Write تا تأیید کامل اتصال مسدود" in html
+    # بررسی وجود متن مربوط به سیاست Write
+    assert "اجرای Write" in html

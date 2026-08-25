@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agents.browser_launcher import launch_browser
+
 
 @dataclass(frozen=True)
 class WordPressAccessibilityTestResult:
@@ -22,7 +24,10 @@ class WordPressAccessibilityTestAgent:
         checks: list[str] = []
         findings: list[str] = []
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            try:
+                browser = launch_browser(playwright)
+            except RuntimeError:
+                return WordPressAccessibilityTestResult(False, (), ("missing:playwright",))
             page = browser.new_page()
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=15000)

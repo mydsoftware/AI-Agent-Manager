@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 
+from agents.browser_launcher import launch_browser
 from agents.wordpress_browser_test_agent import WordPressBrowserTestAgent
 
 
@@ -28,7 +28,10 @@ class WordPressInteractionTestAgent:
         checks: list[str] = []
         findings: list[str] = []
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            try:
+                browser = launch_browser(playwright)
+            except RuntimeError:
+                return WordPressInteractionTestResult(False, (), ("missing:playwright",))
             page = browser.new_page()
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=15000)

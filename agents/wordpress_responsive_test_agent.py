@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agents.browser_launcher import launch_browser
+
 
 @dataclass(frozen=True)
 class WordPressResponsiveTestResult:
@@ -28,7 +30,10 @@ class WordPressResponsiveTestAgent:
         checks: list[str] = []
         findings: list[str] = []
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            try:
+                browser = launch_browser(playwright)
+            except RuntimeError:
+                return WordPressResponsiveTestResult(False, (), ("missing:playwright",))
             try:
                 for name, (width, height) in self.VIEWPORTS.items():
                     page = browser.new_page(viewport={"width": width, "height": height})

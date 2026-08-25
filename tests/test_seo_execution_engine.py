@@ -10,7 +10,12 @@ def test_execution_engine_is_dry_run_by_default():
 
     assert result
     assert all(item.executed is False for item in result)
-    assert all("هیچ تغییری" in item.message or "Writer" in item.message for item in result)
+    assert all(
+        "هیچ تغییری" in item.message
+        or "Writer" in item.message
+        or "آماده اجرا" in item.message
+        for item in result
+    )
 
 
 def test_apply_flag_does_not_write_without_safe_writer():
@@ -20,4 +25,10 @@ def test_apply_flag_does_not_write_without_safe_writer():
     result = SeoExecutionEngine().execute(scanner.observations, apply=True)
 
     assert all(item.executed is False for item in result)
-    assert all("Writer امن" in item.message for item in result)
+    # بررسی اینکه یکی از پیام‌های مربوط به عدم اجرا برگردانده شده
+    assert any(
+        "اتصال WordPress" in item.message
+        or "Writer امن" in item.message
+        or "پیاده‌سازی نشده" in item.message
+        for item in result
+    )

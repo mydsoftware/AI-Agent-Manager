@@ -1,0 +1,20 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+
+# ثبت نشانه‌های سفارشی pytest
+markers = [
+    "integration: تست‌های یکپارچه‌سازی (نیاز به اتصال خارجی)",
+    "slow: تست‌های کند",
+    "security: تست‌های امنیتی",
+    "wordpress: تست‌های مربوط به وردپرس",
+    "api: تست‌های API",
+]
+
+# تنظیمات دیگر
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::pytest.PytestCollectionWarning",
+]

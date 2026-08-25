@@ -25,9 +25,32 @@ class WordPressBrowserTestAgent:
 
         script = '''from playwright.sync_api import sync_playwright
 import sys
+import os
 url = sys.argv[1]
+
+# اول Chromium، بعد Edge، بعد هر مرورگر موجود
+edge_path = r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+edge_path_alt = r"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"
+
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    browser = None
+    # تلاش برای Chromium
+    try:
+        browser = p.chromium.launch(headless=True)
+    except Exception:
+        pass
+    # تلاش برای Edge
+    if browser is None:
+        for ep in [edge_path, edge_path_alt]:
+            if os.path.exists(ep):
+                try:
+                    browser = p.chromium.launch(headless=True, executable_path=ep)
+                    break
+                except Exception:
+                    pass
+    if browser is None:
+        print("ERROR: No browser available")
+        sys.exit(1)
     page = browser.new_page(viewport={"width": 1280, "height": 720})
     page.goto(url, wait_until="networkidle")
     assert page.locator("body").count() > 0
