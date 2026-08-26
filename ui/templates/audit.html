@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+
+{% block title %}ممیزی سایت - AI Agent Manager{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- هدر -->
+    <div class="bg-gradient-to-l from-green-600 via-emerald-600 to-teal-600 rounded-2xl p-8 text-white shadow-xl">
+        <h1 class="text-3xl font-bold mb-2">🌐 ممیزی سایت</h1>
+        <p class="text-green-100">بررسی و تحلیل کامل وب‌سایت با هوش مصنوعی</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- فرم ورودی -->
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <span class="text-2xl">📝</span> اطلاعات سایت
+            </h2>
+            <form id="audit-form" class="space-y-6">
+                <!-- URL سایت -->
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">🔗 آدرس سایت</label>
+                    <input 
+                        type="url" 
+                        id="site-url" 
+                        class="input-field" 
+                        placeholder="https://example.com"
+                        required
+                    >
+                </div>
+
+                <!-- حالت ممیزی -->
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-3">📋 حالت ممیزی</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="mode-option selected" data-mode="pre_contract">
+                            <input type="radio" name="mode" value="pre_contract" class="hidden" checked>
+                            <div class="text-center p-4">
+                                <div class="text-3xl mb-2">📋</div>
+                                <div class="font-bold text-sm">پیش از قرارداد</div>
+                                <div class="text-xs text-gray-500 mt-1">بررسی اولیه</div>
+                            </div>
+                        </label>
+                        <label class="mode-option" data-mode="post_contract">
+                            <input type="radio" name="mode" value="post_contract" class="hidden">
+                            <div class="text-center p-4">
+                                <div class="text-3xl mb-2">📊</div>
+                                <div class="font-bold text-sm">پس از قرارداد</div>
+                                <div class="text-xs text-gray-500 mt-1">ممیزی کامل</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- توضیحات -->
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">📝 توضیحات (اختیاری)</label>
+                    <textarea 
+                        id="audit-description" 
+                        class="input-field" 
+                        rows="3" 
+                        placeholder="توضیحات اضافی درباره سایت..."
+                    ></textarea>
+                </div>
+
+                <!-- دکمه‌ها -->
+                <div class="flex gap-3">
+                    <button type="submit" id="audit-btn" class="btn-primary flex-1 text-lg py-4">
+                        🔍 شروع ممیزی
+                    </button>
+                    <button type="button" onclick="clearAuditForm()" class="btn-secondary">
+                        🗑️ پاک کن
+                    </button>
+                </div>
+            </form>
+
+            <!-- توضیحات حالت‌ها -->
+            <div class="mt-8 space-y-4">
+                <div class="bg-gradient-to-l from-blue-50 to-cyan-50 border border-blue-100 rounded-xl p-5">
+                    <h3 class="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                        <span class="text-xl">📋</span> پیش از قرارداد
+                    </h3>
+                    <ul class="text-sm text-blue-700 space-y-2">
+                        <li class="flex items-center gap-2">
+                            <span class="text-blue-500">✓</span> بررسی اولیه سایت
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="text-blue-500">✓</span> شناسایی مشکلات اصلی
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="text-blue-500">✓</span> تخمین هزینه و زمان
+                        </li>
+                    </ul>
+                </div>
+                <div class="bg-gradient-to-l from-green-50 to-emerald-50 border border-green-100 rounded-xl p-5">
+                    <h3 class="font-bold text-green-800 mb-3 flex items-center gap-2">
+                        <span class="text-xl">📊</span> پس از قرارداد
+                    </h3>
+                    <ul class="text-sm text-green-700 space-y-2">
+                        <li class="flex items-center gap-2">
+                            <span class="text-green-500">✓</span> ممیزی کامل و جامع
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="text-green-500">✓</span> تحلیل عمیق عملکرد
+                        </li>
+                        <li class="flex items-center gap-2">
+                            <span class="text-green-500">✓</span> گزارش تفصیلی
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- نتیجه -->
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+                <span class="text-2xl">📊</span> نتیجه ممیزی
+            </h2>
+            
+            <!-- وضعیت اجرا -->
+            <div id="audit-status" class="hidden mb-6">
+                <div class="bg-gradient-to-l from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
+                    <div class="flex items-center gap-4">
+                        <div class="loading-spinner"></div>
+                        <div>
+                            <span class="text-blue-700 font-bold text-lg">در حال ممیزی...</span>
+                            <p class="text-blue-600 text-sm mt-1">لطفاً صبر کنید</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- نتیجه -->
+            <div id="audit-result" class="space-y-4">
+                <div class="text-center py-16 text-gray-400">
+                    <div class="text-6xl mb-4 animate-float">🌐</div>
+                    <p class="text-lg">هنوز ممیزی انجام نشده است</p>
+                    <p class="text-sm mt-2">از فرم سمت چپ استفاده کنید</p>
+                </div>
+            </div>
+
+            <!-- پیشرفت -->
+            <div id="audit-progress" class="hidden mt-8">
+                <h3 class="font-bold text-gray-700 mb-4 flex items-center gap-2">
+                    <span class="text-xl">📈</span> مراحل ممیزی
+                </h3>
+                <div class="space-y-3">
+                    <div class="progress-step completed">
+                        <span class="text-green-500 text-xl">✓</span>
+                        <span class="font-medium">بررسی دسترسی سایت</span>
+                    </div>
+                    <div class="progress-step completed">
+                        <span class="text-green-500 text-xl">✓</span>
+                        <span class="font-medium">تحلیل ساختار</span>
+                    </div>
+                    <div class="progress-step active">
+                        <div class="loading-spinner w-5 h-5"></div>
+                        <span class="font-medium">بررسی عملکرد</span>
+                    </div>
+                    <div class="progress-step">
+                        <span class="text-gray-400 text-xl">○</span>
+                        <span class="text-gray-500">تولید گزارش</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- تاریخچه ممیزی‌ها -->
+    <div class="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <h2 class="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+            <span class="text-2xl">📋</span> تاریخچه ممیزی‌ها
+        </h2>
+        <div id="audit-history" class="space-y-3">
+            <div class="text-center py-12 text-gray-400">
+                <div class="text-5xl mb-4">📋</div>
+                <p class="text-lg">هنوز ممیزی انجام نشده است</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- مودال تمام صفحه -->
+<div id="audit-fullscreen" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl shadow-2xl w-full h-full mx-4 overflow-hidden flex flex-col">
+        <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gradient-to-l from-green-500 to-emerald-500 text-white">
+            <h3 class="text-lg font-bold">📊 گزارش ممیزی</h3>
+            <button onclick="closeAuditFullscreen()" class="text-white/80 hover:text-white text-2xl transition-colors">✕</button>
+        </div>
+        <div id="audit-fullscreen-content" class="flex-1 overflow-y-auto p-6">
+            <!-- محتوا -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // انتخاب حالت
+    document.querySelectorAll('.mode-option').forEach(option => {
+        option.addEventListener('click', () => {
+            document.querySelectorAll('.mode-option').forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            option.querySelector('input[type="radio"]').checked = true;
+        });
+    });
+
+    // ارسال فرم
+    document.getElementById('audit-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const url = document.getElementById('site-url').value.trim();
+        const mode = document.querySelector('input[name="mode"]:checked').value;
+        const description = document.getElementById('audit-description').value.trim();
+
+        if (!url) {
+            showToast('لطفاً آدرس سایت را وارد کنید', 'error');
+            return;
+        }
+
+        await startAudit(url, mode, description);
+    });
+
+    // شروع ممیزی
+    async function startAudit(url, mode, description) {
+        const auditBtn = document.getElementById('audit-btn');
+        const statusDiv = document.getElementById('audit-status');
+        const resultDiv = document.getElementById('audit-result');
+        const progressDiv = document.getElementById('audit-progress');
+
+        // غیرفعال کردن دکمه
+        auditBtn.disabled = true;
+        auditBtn.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+
+        // نمایش وضعیت
+        statusDiv.classList.remove('hidden');
+        statusDiv.innerHTML = `
+            <div class="bg-gradient-to-l from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
+                <div class="flex items-center gap-4">
+                    <div class="loading-spinner"></div>
+                    <div>
+                        <span class="text-blue-700 font-bold text-lg">در حال ممیزی ${url}...</span>
+                        <p class="text-blue-600 text-sm mt-1">لطفاً صبر کنید</p>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // نمایش پیشرفت
+        progressDiv.classList.remove('hidden');
+
+        // پاک کردن نتیجه قبلی
+        resultDiv.innerHTML = `
+            <div class="text-center py-16">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-500">در حال پردازش...</p>
+            </div>
+        `;
+
+        try {
+            const result = await API.audit(url, mode);
+            
+            // نمایش نتیجه موفق
+            resultDiv.innerHTML = `
+                <div class="space-y-4" style="animation: fadeIn 0.5s ease-out">
+                    <div class="bg-gradient-to-l from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5">
+                        <div class="flex items-center gap-3 text-green-700">
+                            <span class="text-3xl">✅</span>
+                            <div>
+                                <span class="font-bold text-lg">ممیزی با موفقیت انجام شد</span>
+                                <p class="text-green-600 text-sm mt-1">گزارش ممیزی آماده است</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 border border-gray-200 rounded-xl p-5">
+                        <pre class="text-sm overflow-x-auto whitespace-pre-wrap">${JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="viewAuditFullscreen()" class="btn-secondary text-sm flex items-center gap-2">
+                            📺 تمام صفحه
+                        </button>
+                        <button onclick="copyAuditResult()" class="btn-secondary text-sm flex items-center gap-2">
+                            📋 کپی
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // اضافه کردن به تاریخچه
+            addToHistory(url, mode, result);
+            showToast('ممیزی با موفقیت انجام شد', 'success');
+        } catch (error) {
+            // نمایش خطا
+            resultDiv.innerHTML = `
+                <div class="space-y-4" style="animation: fadeIn 0.5s ease-out">
+                    <div class="bg-gradient-to-l from-red-50 to-rose-50 border border-red-200 rounded-xl p-5">
+                        <div class="flex items-center gap-3 text-red-700">
+                            <span class="text-3xl">❌</span>
+                            <div>
+                                <span class="font-bold text-lg">خطا در ممیزی</span>
+                                <p class="text-red-600 text-sm mt-1">${error.message}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            showToast('خطا در ممیزی', 'error');
+        } finally {
+            // فعال کردن مجدد دکمه
+            auditBtn.disabled = false;
+            auditBtn.textContent = '🔍 شروع ممیزی';
+            statusDiv.classList.add('hidden');
+        }
+    }
+
+    // اضافه کردن به تاریخچه
+    function addToHistory(url, mode, result) {
+        const historyDiv = document.getElementById('audit-history');
+        const modeText = mode === 'pre_contract' ? 'پیش از قرارداد' : 'پس از قرارداد';
+        const time = new Date().toLocaleTimeString('fa-IR');
+        
+        const historyItem = document.createElement('div');
+        historyItem.className = 'flex items-center justify-between p-4 bg-gradient-to-l from-gray-50 to-white rounded-xl border border-gray-100 hover:shadow-md transition-all';
+        historyItem.innerHTML = `
+            <div class="flex items-center gap-4">
+                <span class="text-3xl">🌐</span>
+                <div>
+                    <div class="font-bold text-gray-800">${url}</div>
+                    <div class="text-sm text-gray-500">${modeText} - ${time}</div>
+                </div>
+            </div>
+            <button onclick="viewHistoryItem(this)" class="text-primary-600 hover:text-primary-700 text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary-50 transition-colors">
+                مشاهده →
+            </button>
+        `;
+        
+        // حذف پیام خالی
+        if (historyDiv.querySelector('.text-center')) {
+            historyDiv.innerHTML = '';
+        }
+        
+        historyDiv.insertBefore(historyItem, historyDiv.firstChild);
+    }
+
+    // پاک کردن فرم
+    function clearAuditForm() {
+        document.getElementById('site-url').value = '';
+        document.getElementById('audit-description').value = '';
+        document.getElementById('audit-result').innerHTML = `
+            <div class="text-center py-16 text-gray-400">
+                <div class="text-6xl mb-4 animate-float">🌐</div>
+                <p class="text-lg">هنوز ممیزی انجام نشده است</p>
+                <p class="text-sm mt-2">از فرم سمت چپ استفاده کنید</p>
+            </div>
+        `;
+        showToast('فرم پاک شد', 'info');
+    }
+
+    // نمایش تمام صفحه
+    function viewAuditFullscreen() {
+        const modal = document.getElementById('audit-fullscreen');
+        const content = document.getElementById('audit-fullscreen-content');
+        const result = document.querySelector('#audit-result pre');
+        
+        if (result) {
+            content.innerHTML = `<pre class="text-sm whitespace-pre-wrap">${result.textContent}</pre>`;
+        }
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    // بستن مودال
+    function closeAuditFullscreen() {
+        const modal = document.getElementById('audit-fullscreen');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    // کپی نتیجه
+    function copyAuditResult() {
+        const result = document.querySelector('#audit-result pre');
+        if (result) {
+            navigator.clipboard.writeText(result.textContent);
+            showToast('نتیجه کپی شد', 'success');
+        }
+    }
+</script>
+{% endblock %}
