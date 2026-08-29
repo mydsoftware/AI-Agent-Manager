@@ -1,34 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
-
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-const profiles: Record<string,string> = {
-  gold18: 'gold_18', gold24: 'gold_24', coinEmami: 'retail_sana', coinBahar: 'retail_bahar',
-  coinHalf: 'retail_half', coinQuarter: 'retail_quarter', coinGram: 'retail_gerami', usd: 'price_dollar_rl', ounce: 'ons'
-};
-const digits = (s:string) => s.replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/,/g,'');
-const num = (s:string) => { const x=digits(s).replace(/[^0-9.-]/g,''); return x?Number(x):null; };
-
-export async function GET(req: NextRequest) {
-  const symbol = req.nextUrl.searchParams.get('symbol') || 'usd';
-  const days = Math.min(Number(req.nextUrl.searchParams.get('days') || 30), 180);
-  const profile = profiles[symbol];
-  if (!profile) return NextResponse.json({ error:'نماد نامعتبر است' }, {status:400});
-  try {
-    const url = `https://www.tgju.org/profile/${profile}/history`;
-    const res = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0 (compatible; GoldMarketSite/1.0)'}, cache:'no-store'});
-    if (!res.ok) throw new Error(`TGJU HTTP ${res.status}`);
-    const $ = cheerio.load(await res.text());
-    const rows:{date:string; close:number}[]=[];
-    $('tr').each((_,el)=>{
-      const cells=$(el).find('td,th').map((__,c)=>$(c).text().replace(/\s+/g,' ').trim()).get();
-      if(cells.length>=7 && /\d{4}\/\d{2}\/\d{2}/.test(cells[cells.length-2]||'')) {
-        const date=cells[cells.length-2]; const close=num(cells[3]);
-        if(close!==null) rows.push({date,close});
-      }
-    });
-    return NextResponse.json({symbol, source:'TGJU', sourceUrl:url, data:rows.slice(0,days).reverse()});
-  } catch(error) { return NextResponse.json({error:error instanceof Error?error.message:'خطای دریافت تاریخچه'}, {status:502}); }
-}
+export const runtime='nodejs'; export const dynamic='force-dynamic';
+const profiles:Record<string,string>={gold18:'geram18',gold24:'geram24',coinEmami:'retail_sekee',coinBahar:'retail_bahar',coinHalf:'retail_nim',coinQuarter:'retail_rob',coinGram:'retail_gerami',usd:'price_dollar_rl',ounce:'ons_buy'};
+const digits=(s:string)=>s.replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/,/g,'');
+const num=(s:string)=>{const x=digits(s).replace(/[^0-9.-]/g,'');return x?Number(x):null};
+export async function GET(req:NextRequest){const symbol=req.nextUrl.searchParams.get('symbol')||'usd';const days=Math.min(Number(req.nextUrl.searchParams.get('days')||30),180);const profile=profiles[symbol];if(!profile)return NextResponse.json({error:'نماد نامعتبر است'},{status:400});try{const url=`https://www.tgju.org/profile/${profile}/history`;const res=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 (compatible; GoldMarketSite/1.0)'},cache:'no-store'});if(!res.ok)throw new Error(`TGJU HTTP ${res.status}`);const $=cheerio.load(await res.text());const rows:{date:string;close:number}[]=[];$('tr').each((_,el)=>{const cells=$(el).find('td,th').map((__,c)=>$(c).text().replace(/\s+/g,' ').trim()).get();if(cells.length>=7&&/\d{4}\/\d{2}\/\d{2}/.test(cells[cells.length-2]||'')){const date=cells[cells.length-2],close=num(cells[3]);if(close!==null)rows.push({date,close})}});return NextResponse.json({symbol,source:'TGJU',sourceUrl:url,data:rows.slice(0,days).reverse()})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:'خطای دریافت تاریخچه'},{status:502})}}
