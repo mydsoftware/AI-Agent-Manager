@@ -1,0 +1,6 @@
+import {NextResponse} from 'next/server';
+import * as cheerio from 'cheerio';
+export const runtime='nodejs'; export const dynamic='force-dynamic';
+const profiles={coinEmami:'coin_blubber',coinBahar:'sekeb_blubber',coinHalf:'nim_blubber',coinQuarter:'rob_blubber',coinGram:'gerami_blubber'} as const;
+const digits=(s:string)=>s.replace(/[۰-۹]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/,/g,'');
+export async function GET(){const out:Record<string,number|null>={};await Promise.all(Object.entries(profiles).map(async([key,profile])=>{try{const r=await fetch(`https://www.tgju.org/profile/${profile}`,{headers:{'User-Agent':'Mozilla/5.0 (compatible; GoldMarketSite/1.0)'},cache:'no-store'});const $=cheerio.load(await r.text());let value:number|null=null;$('.info-table tr, table tr').each((_,el)=>{const text=$(el).text().replace(/\s+/g,' ').trim();if(text.includes('نرخ فعلی')&&!value){const m=digits(text).match(/\d+/);if(m)value=Number(m[0])}});out[key]=value}catch{out[key]=null}}));return NextResponse.json({source:'TGJU',fetchedAt:new Date().toISOString(),bubbles:out})}
