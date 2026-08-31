@@ -1,134 +1,350 @@
 # AI-Agent-Manager
 
-هسته مدیریت، برنامه‌ریزی و هماهنگی چندایجنتی.
+> هسته مدیریت، برنامه‌ریزی و هماهنگی چندایجنتی با قابلیت تولید خودکار نرم‌افزار و بازی
 
 ## هدف
 
-Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. درخواست کاربر به وظایف قابل اجرا تبدیل می‌شود، وظایف بر اساس وابستگی مرتب می‌شوند، به ایجنت مناسب می‌رسند، خطاها مدیریت می‌شوند و نتیجه نهایی گزارش می‌شود.
+AI-Agent-Manager یک پلتفرم **Autonomous Agentic Development** است که می‌تواند:
 
-## قابلیت‌های فعلی
+1. پروژه نرم‌افزاری بسازد و مدیریت کند
+2. پروژه بازی از ایده تا Build نهایی تولید کند
+3. خطاها را تشخیص و خودکار اصلاح کند
+4. CI/CD و Deployment را مدیریت کند
+5. از Providerهای LLM رایگان استفاده کند
 
-- Registry ایجنت‌های تخصصی
-- Research، Developer، QA و GitHub Agent
-- Planner و Router
-- اجرای وابسته وظایف
-- وضعیت‌های استاندارد Task
-- Agentic Loop
-- تلاش مجدد خودکار هنگام خطا
-- حافظه موقت و حافظه پایدار SQLite
-- گزارش ساختاریافته اجرای Manager
-- API داخلی Python
-- HTTP API با مسیرهای `/health` و `/execute`
-- احراز هویت API با کلید محیطی
-- اتصال واقعی به GitHub REST API
-- ایجاد و به‌روزرسانی فایل‌های GitHub
-- آزمون‌های خودکار با pytest و GitHub Actions
+---
+
+## نصب
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+## پیکربندی
+
+فایل `.env.example` را کپی و تنظیم کنید:
+
+```bash
+cp .env.example .env
+```
+
+### تنظیمات AI Gateway
+
+```env
+# اولویت Providerها
+AI_PROVIDER_PRIORITY=openrouter,freebuff,opencode,ollama
+
+# OpenRouter (رایگان)
+OPENROUTER_API_KEY=your-key
+OPENROUTER_MODEL=openrouter/free
+
+# Freebuff
+FREEBUFF_API_KEY=your-key
+FREEBUFF_BASE_URL=https://api.freebuff.com/v1
+
+# OpenCode
+OPENCODE_BASE_URL=http://localhost:3001/v1
+OPENCODE_API_KEY=your-key
+
+# Ollama (Local)
+OLLAMA_BASE_URL=http://localhost:11434/v1
+```
+
+### تنظیمات GitHub
+
+```env
+GITHUB_TOKEN=your-github-token
+```
+
+### تنظیمات Deployment
+
+```env
+VERCEL_TOKEN=your-vercel-token
+VERCEL_ORG_ID=your-org-id
+VERCEL_PROJECT_ID=your-project-id
+```
+
+---
 
 ## معماری
 
-```text
-کاربر
+```
+USER
   ↓
-HTTP API / Python API
+API / UI
   ↓
 Manager Runtime
   ↓
-Planner
+Intent Analysis → Decision Engine
   ↓
-Task Graph / Executor
+Orchestrator
   ↓
-Router
+Planner → Task Graph
   ↓
-Agent تخصصی
+Agent Router
   ↓
-Tool / GitHub / عملیات واقعی
+Specialized Agents
   ↓
-Recovery
+Tool Registry
   ↓
-Memory
+AI Gateway → Providers (OpenRouter, Freebuff, OpenCode, Ollama)
   ↓
-Report
+Execution → Test → Review → Correction Loop
   ↓
-نتیجه
+Supervisor → Dynamic Replanning
+  ↓
+Git → GitHub → CI → Deploy → Verify
+  ↓
+Final Report
 ```
 
-## اجرای محلی
+---
 
-ابتدا Python 3.12 یا بالاتر را نصب کنید و سپس آزمون‌ها را اجرا کنید:
+## AI Gateway
 
-```bash
-python -m pip install pytest
-python -m pytest -q
+لایه مستقل ارتباط با Providerهای LLM:
+
+### Providerها
+
+| Provider | نوع | توضیح |
+|----------|------|--------|
+| OpenRouter | Cloud | مدل‌های رایگان |
+| Freebuff | Cloud | ارائه‌دهنده مستقل |
+| OpenCode | Cloud | ادغام Coding |
+| Ollama | Local | اجرای محلی |
+
+### Failover خودکار
+
+اگر Provider اول پاسخ ندهد، خودکار به Provider بعدی منتقل می‌شود:
+
+```
+OpenRouter → Rate Limit → Freebuff → Unavailable → OpenCode → Unavailable → Ollama
 ```
 
-برای اجرای HTTP API:
+### مسیریابی مدل
 
-```bash
-python http_api.py
+مدل Agentها قابل تنظیم است:
+
+```env
+PLANNER_MODEL=gpt-4
+DEVELOPER_MODEL=gpt-4
+TESTER_MODEL=gpt-3.5-turbo
 ```
 
-سرویس به‌صورت پیش‌فرض روی `127.0.0.1:8080` اجرا می‌شود.
+---
 
-### بررسی سلامت
+## Agentها
 
-```text
+### Agentهای اصلی
+
+| Agent | نقش |
+|-------|------|
+| Planner | برنامه‌ریزی وظایف |
+| Developer | توسعه کد |
+| Reviewer | بازبینی کد |
+| QA | تضمین کیفیت |
+| Researcher | تحقیق |
+| GitHub | مدیریت GitHub |
+| Security | بررسی امنیت |
+| Deploy | استقرار |
+
+### Agentهای Game Factory
+
+| Agent | نقش |
+|-------|------|
+| Game Designer | طراحی بازی (GDD) |
+| Game Developer | پیاده‌سازی بازی |
+| Game Writer | نوشتن داستان |
+| Game Asset | مدیریت Assetها |
+| Game Level Designer | طراحی سطوح |
+| Game AI | هوش مصنوعی دشمنان |
+| Game UI | رابط کاربری |
+| Game Audio | صدا و موسیقی |
+| Game QA | تست بازی |
+| Game Build | Build بازی |
+
+---
+
+## Tool Registry
+
+ابزارهای استاندارد:
+
+| Tool | مجوز | توضیح |
+|------|------|--------|
+| filesystem | READ, WRITE, DELETE | خواندن/نوشتن فایل |
+| shell | EXECUTE | اجرای فرمان |
+| git | GIT | عملیات Git |
+| github | GITHUB | عملیات GitHub |
+| test | EXECUTE | اجرای تست |
+| build | EXECUTE | اجرای Build |
+| deploy | DEPLOY | استقرار |
+| python | EXECUTE | اجرای Python |
+| browser | BROWSER | تست وب |
+| logs | READ | مشاهده لاگ |
+
+---
+
+## Game Factory
+
+سیستم تولید خودکار بازی:
+
+### مراحل تولید
+
+```
+Idea → GDD → Story → Architecture → Art Direction → Assets
+  → Code → Levels → AI → UI → Audio → Tests → Playtest
+  → Fix → Build → Verify → Final Package
+```
+
+### پلتفرم‌ها
+
+- Android (APK, AAB)
+- Web (dist/)
+- Windows (EXE)
+- Linux (Binary)
+- macOS
+
+### موتورها
+
+- Godot (پیش‌فرض 2D)
+- Unity (3D متوسط)
+- Unreal (3D سنگین)
+- Phaser (Web)
+- Three.js (Web 3D)
+
+---
+
+## API
+
+### سلامت سیستم
+
+```http
 GET /health
 ```
 
-### اجرای Manager
+### Providerها
 
-```text
-POST /execute
-X-API-Key: کلید شما
-Content-Type: application/json
+```http
+GET /providers
 ```
 
-```json
+### مدل‌ها
+
+```http
+GET /models
+```
+
+### Agentها
+
+```http
+GET /agents
+```
+
+### اجرای درخواست
+
+```http
+POST /execute
+Content-Type: application/json
+
 {
   "request": "درخواست کاربر",
   "agent": "developer"
 }
 ```
 
-## تنظیم کلید API
+### اجرای Async
 
-کلید API در متغیر محیطی `AI_AGENT_MANAGER_API_KEY` قرار می‌گیرد.
+```http
+POST /execute/async
+Content-Type: application/json
+X-Execution-ID: exec-123
 
-## اتصال GitHub
-
-برای عملیات واقعی GitHub، متغیر محیطی `GITHUB_TOKEN` را فقط در محیط اجرا تنظیم کنید. این مقدار نباید در Repository ذخیره یا Commit شود.
-
-ایجنت GitHub از دستور JSON ساختاریافته پشتیبانی می‌کند. نمونه خواندن فایل:
-
-```json
 {
-  "action": "file",
-  "repository": "mydsoftware/AI-Agent-Manager",
-  "path": "README.md",
-  "ref": "feature/manager-core"
+  "request": "درخواست کاربر"
 }
 ```
 
-نمونه ایجاد یا به‌روزرسانی فایل:
+### ایجاد پروژه نرم‌افزاری
 
-```json
+```http
+POST /project/create
+Content-Type: application/json
+
 {
-  "action": "put_file",
-  "repository": "mydsoftware/AI-Agent-Manager",
-  "path": "example.txt",
-  "content": "متن فایل",
-  "branch": "feature/manager-core",
-  "message": "feat: به‌روزرسانی فایل"
+  "name": "نام پروژه",
+  "description": "توضیحات",
+  "request": "درخواست ساخت",
+  "project_type": "website"
 }
 ```
+
+### ایجاد پروژه بازی
+
+```http
+POST /game/create
+Content-Type: application/json
+
+{
+  "name": "نام بازی",
+  "description": "توضیحات بازی",
+  "genre": "platformer",
+  "platform": "android"
+}
+```
+
+### Session
+
+```http
+POST /session/start
+POST /session/answer
+GET /session/{id}
+```
+
+### مسیریابی
+
+```http
+POST /route
+Content-Type: application/json
+
+{
+  "request": "درخواست کاربر"
+}
+```
+
+---
+
+## اجرای محلی
+
+```bash
+# اجرای HTTP API
+python http_api.py
+
+# اجرای Session API
+python session_api.py
+```
+
+سرور به‌صورت پیش‌فرض روی `127.0.0.1:8080` اجرا می‌شود.
+
+---
+
+## تست‌ها
+
+```bash
+python -m pytest -q
+```
+
+---
 
 ## امنیت
 
-- اطلاعات محرمانه نباید در کد یا Repository قرار بگیرند.
-- کلید API فقط از محیط اجرا خوانده می‌شود.
-- کلیدها با مقایسه امن بررسی می‌شوند.
-- توکن GitHub فقط از محیط اجرا خوانده می‌شود.
+- Secretها فقط از محیط اجرا خوانده می‌شوند
+- کلیدها با مقایسه امن بررسی می‌شوند
+- توکن GitHub هرگز در Log چاپ نمی‌شود
+- Path Traversal ممنوع
+- فرمان‌های خطرناک مسدود
+
+---
 
 ## قانون زبان پروژه
 
-تمام READMEها، مستندات، توضیحات، راهنماها، کامنت‌های کد و پیام‌های کاربری پروژه باید فارسی باشند. نام متغیرها، کلاس‌ها، توابع، مسیر فایل‌ها و شناسه‌های فنی می‌توانند انگلیسی و استاندارد باقی بمانند.
+تمام READMEها، مستندات و توضیحات پروژه باید **فارسی** باشند. نام متغیرها، کلاس‌ها و توابع می‌توانند انگلیسی باشند.

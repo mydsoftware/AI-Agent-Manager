@@ -1,4 +1,9 @@
+"""حلقه اصلاح خودکار وظایف."""
+
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
 
 from manager.context import AgentContext
 from manager.correction import CorrectionFactory
@@ -8,15 +13,33 @@ from manager.task import Task
 from manager.task_status import TaskStatus
 
 
+@dataclass
+class FailureRecord:
+    """رکورد یک خطا برای حافظه شکست."""
+
+    task_id: str
+    attempt: int
+    error: str
+    command: str = ""
+    files: list[str] = field(default_factory=list)
+    solution: str = ""
+
+
 class CorrectionLoop:
     """در صورت رد نتیجه، Task اصلاحی می‌سازد و Context را حفظ می‌کند."""
 
-    def __init__(self, loop: AgenticLoop, context: AgentContext | None = None, max_attempts: int = 2) -> None:
+    def __init__(
+        self,
+        loop: AgenticLoop,
+        context: AgentContext | None = None,
+        max_attempts: int = 5,
+    ) -> None:
         self.loop = loop
         self.context = context or AgentContext()
         self.feedback = FeedbackEngine()
         self.corrections = CorrectionFactory()
         self.max_attempts = max_attempts
+        self.failure_history: list[FailureRecord] = []
 
     def _apply_context(self, task: Task) -> None:
         """خروجی وابستگی‌ها را قبل از اجرای Task وارد توضیحات می‌کند."""
@@ -25,19 +48,33 @@ class CorrectionLoop:
         inputs = {dependency: self.context.get(dependency) for dependency in task.depends_on}
         task.description = f"{task.description}\n\nخروجی مراحل قبلی:\n{inputs}"
 
+    def _detect_loop(self, error: str) -> bool:
+        """تشخیص حلقه تکرار خطا."""
+        recent_errors = [r.error for r in self.failure_history[-5:]]
+        return recent_errors.count(error) >= 3
+
     def run(self, task: Task) -> Task:
         """Task را اجرا، ارزیابی و در صورت نیاز با همان Context اصلاح می‌کند."""
         current = task
         for attempt in range(1, self.max_attempts + 1):
             self._apply_context(current)
             try:
-                current.status = TaskStatus.RUNNING
+                current.start()
                 current.result = self.loop.run([current])[0]
                 current.status = TaskStatus.SUCCESS
                 current.error = None
             except Exception as error:
                 current.status = TaskStatus.FAILED
                 current.error = str(error)
+                self.failure_history.append(FailureRecord(
+                    task_id=task.id,
+                    attempt=attempt,
+                    error=str(error),
+                ))
+
+                if self._detect_loop(str(error)):
+                    current.error = f"LOOP_DETECTED: {current.error}"
+                    break
 
             decision = self.feedback.evaluate(current)
             if decision.accepted:
@@ -54,3 +91,15 @@ class CorrectionLoop:
             current = corrected
 
         return current
+
+    def get_failure_summary(self) -> list[dict[str, Any]]:
+        """خلاصه تاریخچه خطاها را برمی‌گرداند."""
+        return [
+            {
+                "task_id": r.task_id,
+                "attempt": r.attempt,
+                "error": r.error,
+                "solution": r.solution,
+            }
+            for r in self.failure_history
+        ]

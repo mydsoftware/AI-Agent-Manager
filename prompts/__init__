@@ -1,0 +1,23 @@
+"""سیستم مدیریت Promptها."""
+
+from pathlib import Path
+
+PROMPTS_DIR = Path(__file__).parent
+
+
+def load_prompt(agent: str, name: str = "system") -> str:
+    """محتوای یک فایل Prompt را بارگذاری می‌کند."""
+    prompt_file = PROMPTS_DIR / agent / f"{name}.txt"
+    if prompt_file.exists():
+        return prompt_file.read_text(encoding="utf-8")
+    return ""
+
+
+def list_prompts(agent: str | None = None) -> list[str]:
+    """فهرست Promptهای موجود را برمی‌گرداند."""
+    if agent:
+        agent_dir = PROMPTS_DIR / agent
+        if agent_dir.exists():
+            return [f.stem for f in agent_dir.glob("*.txt")]
+        return []
+    return [f.parent.name for f in PROMPTS_DIR.rglob("*.txt")]

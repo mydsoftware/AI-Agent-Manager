@@ -5,8 +5,11 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from api import execute
+from ai_gateway import AIGateway, GatewayConfig
+from game.factory import GameFactory
 from manager.api_guard import APIGuard
 from manager.execution_store import ExecutionStore
+from manager.observability import Observability
 from manager.policy import authorize
 from manager.project_factory import ProjectRepositoryFactory
 from manager.request_router import route_request
@@ -22,6 +25,8 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
     executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="agent-execution")
     session_runtime = SessionRuntime(sessions=UserSessionManager("data/sessions"))
     project_factory = ProjectRepositoryFactory()
+    game_factory = GameFactory()
+    observability = Observability()
 
     def _send_json(self, status: int, data: dict) -> None:
         payload = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
@@ -33,6 +38,9 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def _authorized(self) -> bool:
+        # حالت توسعه: اگر کلید محیطی تنظیم نشده باشد، بدون احراز هویت عبور کن
+        if not self.guard.authenticator.enabled:
+            return True
         if self.guard.authorized(self.headers.get("X-API-Key")):
             return True
         self._send_json(401, {"error": "کلید دسترسی معتبر نیست."})
@@ -47,11 +55,55 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             cls.execution_store.update(execution_id, status="failed", error="اجرای Agent با خطا مواجه شد.")
 
+    def _read_body(self) -> dict:
+        """بدنه درخواست JSON را می‌خواند."""
+        length = int(self.headers.get("Content-Length", "0"))
+        if length == 0:
+            return {}
+        return json.loads(self.rfile.read(length).decode("utf-8"))
+
     def do_GET(self) -> None:
         if self.path == "/health":
-            self._send_json(200, {"status": "فعال"})
+            gateway = AIGateway()
+            self._send_json(200, {
+                "status": "فعال",
+                "providers": gateway.health(),
+                "version": "2.0.0",
+            })
+            return
+        if self.path == "/providers":
+            gateway = AIGateway()
+            self._send_json(200, {
+                "providers": gateway.list_providers(),
+                "enabled": gateway.list_enabled(),
+                "health": gateway.health(),
+            })
+            return
+        if self.path == "/models":
+            config = GatewayConfig.from_environment()
+            self._send_json(200, {
+                "models": config.models,
+                "provider_priority": config.provider_priority,
+            })
+            return
+        if self.path == "/agents":
+            from agents.registry import create_default_registry
+            registry = create_default_registry()
+            self._send_json(200, {
+                "agents": registry.names(),
+                "game_agents": [
+                    "game-designer", "game-developer", "game-writer",
+                    "game-asset", "game-level-designer", "game-ai",
+                    "game-ui", "game-audio", "game-qa", "game-build",
+                ],
+            })
             return
         if not self._authorized():
+            return
+        if self.path.startswith("/executions/") and self.path.endswith("/events"):
+            execution_id = self.path.split("/executions/")[1].split("/events")[0]
+            events = self.observability.get_events()
+            self._send_json(200, {"execution_id": execution_id, "events": self.observability.export()})
             return
         if self.path.startswith("/executions/"):
             execution_id = self.path.removeprefix("/executions/").strip("/")
@@ -59,6 +111,42 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(200, self.execution_store.get(execution_id).__dict__)
             except (FileNotFoundError, ValueError):
                 self._send_json(404, {"error": "Execution پیدا نشد."})
+            return
+        if self.path.startswith("/game/") and self.path.endswith("/status"):
+            game_id = self.path.split("/game/")[1].split("/status")[0]
+            try:
+                project = self.game_factory.get_project(game_id)
+                self._send_json(200, {
+                    "id": project.id, "name": project.name,
+                    "status": project.status, "tasks": len(project.tasks),
+                })
+            except FileNotFoundError:
+                self._send_json(404, {"error": "پروژه بازی یافت نشد."})
+            return
+        if self.path.startswith("/game/") and self.path.endswith("/events"):
+            game_id = self.path.split("/game/")[1].split("/events")[0]
+            self._send_json(200, {"game_id": game_id, "events": []})
+            return
+        if self.path.startswith("/game/") and self.path.endswith("/assets"):
+            game_id = self.path.split("/game/")[1].split("/assets")[0]
+            self._send_json(200, {"game_id": game_id, "assets": []})
+            return
+        if self.path.startswith("/game/") and self.path.endswith("/builds"):
+            game_id = self.path.split("/game/")[1].split("/builds")[0]
+            self._send_json(200, {"game_id": game_id, "builds": []})
+            return
+        if self.path.startswith("/game/"):
+            game_id = self.path.removeprefix("/game/").strip("/")
+            try:
+                project = self.game_factory.get_project(game_id)
+                self._send_json(200, {
+                    "id": project.id, "name": project.name,
+                    "description": project.description,
+                    "genre": project.genre, "platform": project.platform,
+                    "status": project.status,
+                })
+            except FileNotFoundError:
+                self._send_json(404, {"error": "پروژه بازی یافت نشد."})
             return
         if self.path.startswith("/session/"):
             session_id = self.path.removeprefix("/session/").strip("/")
@@ -184,6 +272,46 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
                     self._send_json(400, {"error": "session_id و answer الزامی هستند."})
                     return
                 self._send_json(200, self.session_runtime.answer(session_id, answer).__dict__)
+                return
+
+            if self.path == "/game/create":
+                name = str(body.get("name", "")).strip()
+                description = str(body.get("description", "")).strip()
+                genre = str(body.get("genre", "")).strip()
+                platform = str(body.get("platform", "multi")).strip()
+                engine = str(body.get("engine", "")).strip()
+                if not name or not description:
+                    self._send_json(400, {"error": "name و description الزامی هستند."})
+                    return
+                project = self.game_factory.create_project(
+                    name, description, genre=genre, platform=platform, engine=engine,
+                )
+                tasks = self.game_factory.generate_tasks(project)
+                self._send_json(201, {
+                    "id": project.id, "name": project.name,
+                    "tasks_count": len(tasks),
+                    "tasks": [
+                        {"id": t.id, "title": t.title, "agent": t.agent, "depends_on": t.depends_on}
+                        for t in tasks
+                    ],
+                })
+                return
+
+            if self.path == "/game/playtest" or (self.path.startswith("/game/") and self.path.endswith("/playtest")):
+                self._send_json(200, {"status": "playtest_scheduled"})
+                return
+
+            if self.path == "/game/rebuild" or (self.path.startswith("/game/") and self.path.endswith("/rebuild")):
+                self._send_json(200, {"status": "rebuild_scheduled"})
+                return
+
+            if self.path == "/execution/cancel" and self.path.count("/") == 2:
+                execution_id = self.path.split("/")[2]
+                try:
+                    self.execution_store.update(execution_id, status="cancelled")
+                    self._send_json(200, {"status": "cancelled", "execution_id": execution_id})
+                except Exception:
+                    self._send_json(404, {"error": "Execution پیدا نشد."})
                 return
 
             self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
