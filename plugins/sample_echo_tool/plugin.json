@@ -1,0 +1,13 @@
+{
+  "name": "sample_echo_tool",
+  "version": "1.0.0",
+  "description": "Example tool plugin that echoes text.",
+  "type": "tool",
+  "entrypoint": "echo.py",
+  "permissions": ["tools.register"],
+  "dependencies": [],
+  "config_schema": {
+    "prefix": {"type": "string", "default": "echo:"}
+  },
+  "enabled": true
+}
