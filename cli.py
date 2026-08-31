@@ -290,7 +290,7 @@ def show_help():
     print(help_text)
 
 def main_loop():
-حلقه اصلی CLI"""
+    """حلقه اصلی CLI"""
     builder = AgentBuilder(config_path='config.json')
     
     while True:
