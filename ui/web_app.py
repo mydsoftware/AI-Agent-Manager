@@ -33,7 +33,7 @@ def api_call(endpoint: str, method: str = "GET", data: dict = None) -> dict:
     headers = {
         "Content-Type": "application/json",
     }
-    # فقط اگر API key تنظیم شده باشد، آن را ارسال کن
+    # فقط کلید واقعی ارسال شود (کلید پیش‌فرض = حالت توسعه)
     if API_KEY and API_KEY != "test-key-for-development":
         headers["X-API-Key"] = API_KEY
     url = f"{API_BASE}{endpoint}"

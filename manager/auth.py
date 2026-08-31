@@ -14,14 +14,14 @@ class APIAuthenticator:
 
     @property
     def enabled(self) -> bool:
-        return bool(os.getenv(self.environment_name) or self.api_key)
+        # فقط در زمان اجرا چک کن (نه مقدار ذخیره شده در init)
+        return bool(os.getenv(self.environment_name))
 
     def validate(self, provided_key: str | None) -> bool:
         """کلید را در زمان درخواست از محیط می‌خواند تا تست و runtime هر دو درست باشند."""
         configured_key = os.getenv(self.environment_name) or self.api_key
-        # اگر کلیدی تنظیم نشده باشد، حالت توسعه فعال است و درخواست‌ها بدون احراز هویت پذیرفته می‌شوند
         if not configured_key:
-            return True
+            return False
         if not provided_key:
             return False
         expected = hashlib.sha256(configured_key.encode("utf-8")).digest()
