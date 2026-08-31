@@ -1,0 +1,131 @@
+name: ساخت ایجنت از Issue
+
+on:
+  issues:
+    types: [labeled]
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  check-and-build:
+    name: بررسی و ساخت ایجنت
+    runs-on: ubuntu-latest
+    if: contains(github.event.label.name, 'create-agent')
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: تحلیل Issue
+        id: analyze
+        run: |
+          ISSUE_BODY="${{ github.event.issue.body }}"
+          ISSUE_TITLE="${{ github.event.issue.title }}"
+          
+          # استخراج اطلاعات از Issue
+          # فرمت مورد انتظار:
+          # نوع: developer
+          # زبان: python
+          # توضیحات: ایجنتی برای مدیریت دیتابیس
+          
+          AGENT_TYPE=$(echo "$ISSUE_BODY" | grep -oP 'نوع:\s*\K.*' | head -1 || echo "developer")
+          LANGUAGE=$(echo "$ISSUE_BODY" | grep -oP 'زبان:\s*\K.*' | head -1 || echo "python")
+          DESCRIPTION=$(echo "$ISSUE_BODY" | grep -oP 'توضیحات:\s*\K.*' | head -1 || echo "$ISSUE_TITLE")
+          
+          echo "agent_type=$AGENT_TYPE" >> $GITHUB_OUTPUT
+          echo "language=$LANGUAGE" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+
+      - name: تنظیم Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: تنظیم متغیرهای محیطی
+        run: |
+          echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+          echo "GITHUB_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+          if [ -n "${{ secrets.FREEBUFF_API_KEY }}" ]; then
+            echo "FREEBUFF_API_KEY=${{ secrets.FREEBUFF_API_KEY }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ secrets.OPENCODE_API_KEY }}" ]; then
+            echo "OPENCODE_API_KEY=${{ secrets.OPENCODE_API_KEY }}" >> $GITHUB_ENV
+          fi
+
+      - name: ساخت ایجنت
+        id: build
+        run: |
+          python agent_builder.py create \
+            --type "${{ steps.analyze.outputs.agent_type }}" \
+            --description "${{ steps.analyze.outputs.description }}" \
+            --language "${{ steps.analyze.outputs.language }}" > agent_result.json
+          
+          AGENT_ID=$(python -c "import json; print(json.load(open('agent_result.json'))['id'])")
+          echo "agent_id=$AGENT_ID" >> $GITHUB_OUTPUT
+
+      - name: ایجاد PR
+        if: success()
+        run: |
+          AGENT_ID="${{ steps.build.outputs.agent_id }}"
+          BRANCH_NAME="agent/${AGENT_ID}"
+          
+          git config user.name "AI-Agent-Manager"
+          git config user.email "agent-manager@noreply.github.com"
+          
+          git checkout -b "$BRANCH_NAME"
+          git add agents/
+          git commit -m "feat: افزودن ایجنت ${AGENT_ID}
+          
+          درخواست‌کننده: @${{ github.event.issue.user.login }}
+          شماره Issue: #${{ github.event.issue.number }}"
+          git push origin "$BRANCH_NAME"
+          
+          # ایجاد PR
+          PR_BODY="## ایجنت جدید اضافه شد
+
+          **شناسه:** ${AGENT_ID}
+          **درخواست‌کننده:** @${{ github.event.issue.user.login }}
+          **شماره Issue:** #${{ github.event.issue.number }}
+
+          ---
+
+          *این PR به‌صورت خودکار توسط AI-Agent-Manager ایجاد شده است*"
+          
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls" \
+            -d "{
+              \"title\": \"افزودن ایجنت: ${AGENT_ID}\",
+              \"body\": \"${PR_BODY}\",
+              \"head\": \"${BRANCH_NAME}\",
+              \"base\": \"main\"
+            }"
+
+      - name: بستن Issue
+        if: success()
+        run: |
+          curl -X PATCH \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}" \
+            -d '{
+              "state": "closed",
+              "labels": ["created-agent"]
+            }'
+
+      - name: اضافه کردن کامنت
+        if: success()
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            -d "{
+              \"body\": \"✅ ایجنت **${{ steps.build.outputs.agent_id }}** با موفقیت ساخته شد!\n\nPR ایجاد شده: در حال بررسی...\"
+            }"

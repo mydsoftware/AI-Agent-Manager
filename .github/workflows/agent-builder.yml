@@ -1,0 +1,144 @@
+name: ساخت خودکار ایجنت
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent_type:
+        description: 'نوع ایجنت'
+        required: true
+        type: choice
+        options:
+          - research
+          - developer
+          - qa
+          - github
+          - monitoring
+          - analysis
+          - automation
+      description:
+        description: 'توضیحات ایجنت'
+        required: true
+        type: string
+      language:
+        description: 'زبان برنامه‌نویسی'
+        required: false
+        default: 'python'
+        type: choice
+        options:
+          - python
+          - javascript
+          - typescript
+          - csharp
+          - go
+          - rust
+
+  repository_dispatch:
+    types: [create-agent]
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  build-agent:
+    name: ساخت ایجنت
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: تنظیم Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: نصب وابستگی‌ها
+        run: |
+          python -m pip install --upgrade pip
+          # نصب وابستگی‌های اضافی در صورت نیاز
+
+      - name: تنظیم متغیرهای محیطی
+        run: |
+          echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+          echo "GITHUB_REPOSITORY=${{ github.repository }}" >> $GITHUB_ENV
+          # تنظیم کلید API ابزارها در صورت وجود
+          if [ -n "${{ secrets.FREEBUFF_API_KEY }}" ]; then
+            echo "FREEBUFF_API_KEY=${{ secrets.FREEBUFF_API_KEY }}" >> $GITHUB_ENV
+          fi
+          if [ -n "${{ secrets.OPENCODE_API_KEY }}" ]; then
+            echo "OPENCODE_API_KEY=${{ secrets.OPENCODE_API_KEY }}" >> $GITHUB_ENV
+          fi
+
+      - name: ساخت ایجنت
+        id: build
+        run: |
+          AGENT_TYPE="${{ github.event.inputs.agent_type || github.event.client_payload.agent_type }}"
+          DESCRIPTION="${{ github.event.inputs.description || github.event.client_payload.description }}"
+          LANGUAGE="${{ github.event.inputs.language || github.event.client_payload.language || 'python' }}"
+          
+          echo "نوع ایجنت: $AGENT_TYPE"
+          echo "توضیحات: $DESCRIPTION"
+          echo "زبان: $LANGUAGE"
+          
+          # اجرای اسکریپت ساخت ایجنت
+          python agent_builder.py create \
+            --type "$AGENT_TYPE" \
+            --description "$DESCRIPTION" \
+            --language "$LANGUAGE" > agent_result.json
+          
+          # استخراج شناسه ایجنت
+          AGENT_ID=$(python -c "import json; print(json.load(open('agent_result.json'))['id'])")
+          echo "agent_id=$AGENT_ID" >> $GITHUB_OUTPUT
+          
+          echo "ایجنت ساخته شد: $AGENT_ID"
+
+      - name: ایجاد Branch و Pull Request
+        if: success()
+        run: |
+          AGENT_ID="${{ steps.build.outputs.agent_id }}"
+          
+          # ایجاد branch جدید
+          BRANCH_NAME="agent/${AGENT_ID}"
+          git config user.name "AI-Agent-Manager"
+          git config user.email "agent-manager@noreply.github.com"
+          
+          git checkout -b "$BRANCH_NAME"
+          git add agents/
+          git commit -m "feat: افزودن ایجنت جدید ${AGENT_ID}"
+          git push origin "$BRANCH_NAME"
+          
+          # ایجاد PR
+          PR_TITLE="افزودن ایجنت جدید: ${AGENT_ID}"
+          PR_BODY="این PR به‌صورت خودکار توسط AI-Agent-Manager ایجاد شده است."
+          
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls" \
+            -d "{
+              \"title\": \"${PR_TITLE}\",
+              \"body\": \"${PR_BODY}\",
+              \"head\": \"${BRANCH_NAME}\",
+              \"base\": \"main\"
+            }"
+
+      - name: آپلود نتایج
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-result
+          path: |
+            agent_result.json
+            agents/
+
+      - name: نمایش نتیجه
+        if: success()
+        run: |
+          echo "✅ ایجنت با موفقیت ساخته شد!"
+          echo "شناسه: ${{ steps.build.outputs.agent_id }}"
+          cat agent_result.json
