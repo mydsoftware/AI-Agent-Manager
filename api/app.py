@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from api.agent_team_api import AgentTeamAPI
 from api.http import create_app
+from api.memory_knowledge_api import register_memory_knowledge_api
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from runtime import ManagerRuntime
 
@@ -11,7 +12,9 @@ def create_manager_app() -> object:
     runtime = ManagerRuntime()
     team_api = AgentTeamAPI(runtime.agent_team, runtime.registry_manager)
     wordpress_connection_api = WordPressConnectionHttpApi()
-    return create_app(team_api, runtime, wordpress_connection_api)
+    app = create_app(team_api, runtime, wordpress_connection_api)
+    register_memory_knowledge_api(app, str(runtime.persistent_memory.database_path))
+    return app
 
 
 app = create_manager_app()
