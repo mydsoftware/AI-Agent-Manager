@@ -3,93 +3,69 @@
 {% block content %}
 <div class="workspace-shell">
   <div class="dashboard-head">
-    <div>
-      <div class="eyebrow">PROJECT WORKSPACE</div>
-      <h1 id="project-title">فضای کاری پروژه</h1>
-      <p id="project-subtitle">مدیریت اجرا، Agentها، Workflow و خروجی پروژه در یک محیط واحد.</p>
-    </div>
+    <div><div class="eyebrow">PROJECT WORKSPACE</div><h1 id="project-title">فضای کاری پروژه</h1><p id="project-subtitle">مدیریت اجرا، Agentها، Workflow و خروجی پروژه در یک محیط واحد.</p></div>
     <a href="/projects" class="btn-secondary">← پروژه‌ها</a>
   </div>
 
   <section class="glass-panel project-hero">
-    <div class="project-meta">
-      <span class="status-dot"></span><span id="project-status">READY</span>
-      <span class="meta-separator">•</span><span id="project-repo">Repository در حال بارگذاری...</span>
-    </div>
+    <div class="project-meta"><span class="status-dot"></span><span id="project-status">LOADING</span><span class="meta-separator">•</span><span id="project-repo">Repository در حال بارگذاری...</span></div>
     <div class="workspace-tabs" role="tablist">
-      <button class="workspace-tab active" data-tab="overview">Overview</button>
-      <button class="workspace-tab" data-tab="workflow">Workflow</button>
-      <button class="workspace-tab" data-tab="agents">Agents</button>
-      <button class="workspace-tab" data-tab="tasks">Tasks</button>
-      <button class="workspace-tab" data-tab="files">Files</button>
-      <button class="workspace-tab" data-tab="activity">Activity</button>
+      <button class="workspace-tab active" data-tab="overview">Overview</button><button class="workspace-tab" data-tab="workflow">Workflow</button><button class="workspace-tab" data-tab="agents">Agents</button><button class="workspace-tab" data-tab="tasks">Tasks</button><button class="workspace-tab" data-tab="files">Files</button><button class="workspace-tab" data-tab="activity">Activity</button>
     </div>
   </section>
 
   <section id="tab-overview" class="workspace-panel">
     <div class="stats-grid">
-      <div class="metric"><span>Project</span><strong id="metric-project">—</strong><small>شناسه پروژه</small></div>
-      <div class="metric"><span>Agents</span><strong>10</strong><small>Registry</small></div>
-      <div class="metric"><span>Tasks</span><strong id="metric-tasks">0</strong><small>فعال</small></div>
-      <div class="metric"><span>Environment</span><strong>ISOLATED</strong><small>Sandbox</small></div>
+      <div class="metric"><span>Project</span><strong id="metric-project">—</strong><small>شناسه پروژه</small></div><div class="metric"><span>Agents</span><strong>10</strong><small>Registry</small></div><div class="metric"><span>Tasks</span><strong id="metric-tasks">0</strong><small>اجرا</small></div><div class="metric"><span>Status</span><strong id="metric-status">—</strong><small>Runtime</small></div>
     </div>
     <div class="dashboard-grid">
-      <section class="panel">
-        <div class="panel-head"><div><span class="eyebrow">AI FACTORY</span><h2>Pipeline پروژه</h2></div><span class="live-badge">● LIVE</span></div>
-        <div class="pipeline">
-          <div class="pipeline-step done"><b>01</b><span>Idea</span></div><div class="pipeline-line"></div>
-          <div class="pipeline-step active"><b>02</b><span>Plan</span></div><div class="pipeline-line"></div>
-          <div class="pipeline-step"><b>03</b><span>Route</span></div><div class="pipeline-line"></div>
-          <div class="pipeline-step"><b>04</b><span>Build</span></div><div class="pipeline-line"></div>
-          <div class="pipeline-step"><b>05</b><span>Test</span></div><div class="pipeline-line"></div>
-          <div class="pipeline-step"><b>06</b><span>Deploy</span></div>
-        </div>
-      </section>
-      <section class="panel">
-        <div class="panel-head"><div><span class="eyebrow">MANAGER</span><h2>اقدام بعدی</h2></div></div>
-        <p class="muted">Manager آماده است تا Workflow را از روی هدف پروژه تولید و اجرا کند.</p>
-        <button class="btn-primary" onclick="startManagerTask()">اجرای Task جدید ↗</button>
-      </section>
+      <section class="panel"><div class="panel-head"><div><span class="eyebrow">AI FACTORY</span><h2>Pipeline پروژه</h2></div><span id="live-badge" class="live-badge">● READY</span></div><div class="pipeline"><div class="pipeline-step done"><b>01</b><span>Idea</span></div><div class="pipeline-line"></div><div class="pipeline-step active"><b>02</b><span>Plan</span></div><div class="pipeline-line"></div><div class="pipeline-step"><b>03</b><span>Route</span></div><div class="pipeline-line"></div><div class="pipeline-step"><b>04</b><span>Build</span></div><div class="pipeline-line"></div><div class="pipeline-step"><b>05</b><span>Test</span></div><div class="pipeline-line"></div><div class="pipeline-step"><b>06</b><span>Deploy</span></div></div></section>
+      <section class="panel"><div class="panel-head"><div><span class="eyebrow">MANAGER</span><h2>اجرای واقعی</h2></div></div><p id="project-request" class="muted">درخواست پروژه در حال بارگذاری...</p><button id="run-button" class="btn-primary" onclick="runManagerTask()">اجرای پروژه ↗</button></section>
     </div>
   </section>
 
-  <section id="tab-workflow" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">WORKFLOW GRAPH</span><h2>جریان اجرای Agentها</h2></div></div><div class="workflow-graph"><div class="workflow-node active">Manager<div>Orchestrator</div></div><div class="workflow-arrow">→</div><div class="workflow-node">Planner<div>Requirements</div></div><div class="workflow-arrow">→</div><div class="workflow-node">Agent Router<div>Dynamic Selection</div></div><div class="workflow-arrow">→</div><div class="workflow-node">Build<div>Sandbox</div></div><div class="workflow-arrow">→</div><div class="workflow-node">QA<div>Test & Repair</div></div></div></div></section>
-
+  <section id="tab-workflow" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">WORKFLOW GRAPH</span><h2>جریان اجرای Agentها</h2></div></div><div class="workflow-graph"><div class="workflow-node active">Manager<div>Orchestrator</div></div><div class="workflow-arrow">→</div><div class="workflow-node">Planner<div>Requirements</div></div><div class="workflow-arrow">→</div><div class="workflow-node">Agent Router<div>Dynamic Selection</div></div><div class="workflow-arrow">→</div><div class="workflow-node">Build<div>Runtime</div></div><div class="workflow-arrow">→</div><div class="workflow-node">QA<div>Test & Repair</div></div></div></div></section>
   <section id="tab-agents" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">AGENT RUNTIME</span><h2>Agentهای پروژه</h2></div></div><div class="agent-list">{% for key, agent in agents.items() %}<div class="agent-row"><span class="agent-icon">{{ agent.icon }}</span><span><b>{{ agent.name }}</b><small>{{ agent.desc }}</small></span><span class="live-badge">IDLE</span></div>{% endfor %}</div></div></section>
-
-  <section id="tab-tasks" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">TASK CENTER</span><h2>Task Queue</h2></div></div><div id="task-list" class="empty-state">هنوز Task فعالی ثبت نشده است.</div></div></section>
-
-  <section id="tab-files" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">PERSISTENT WORKSPACE</span><h2>فایل‌ها</h2></div></div><div class="file-tree"><div>📁 project</div><div>├── 📄 PROJECT_REQUEST.json</div><div>├── 📄 README.md</div><div>├── 📁 agent</div><div>│   └── 📄 state.json</div><div>└── 📁 site</div></div></div></section>
-
-  <section id="tab-activity" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">ACTIVITY</span><h2>رویدادهای اخیر</h2></div></div><div id="activity-log" class="activity-log"><div>● Workspace initialized</div><div>● Manager runtime آماده است</div><div>● Sandbox isolation فعال است</div></div></div></section>
+  <section id="tab-tasks" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">TASK CENTER</span><h2>Task Queue</h2></div></div><div id="task-list" class="empty-state">هنوز اجرای پروژه‌ای انجام نشده است.</div></div></section>
+  <section id="tab-files" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">PROJECT DATA</span><h2>اطلاعات Workspace</h2></div></div><div id="file-tree" class="file-tree"><div>📁 project</div><div>├── 📄 request</div><div>└── 📄 runtime report</div></div></div></section>
+  <section id="tab-activity" class="workspace-panel hidden"><div class="panel"><div class="panel-head"><div><span class="eyebrow">ACTIVITY</span><h2>رویدادهای اخیر</h2></div></div><div id="activity-log" class="activity-log"><div>● Workspace loading...</div></div></div></section>
 </div>
 {% endblock %}
-{% block scripts %}
-<script>
+{% block scripts %}<script>
 const params = new URLSearchParams(location.search);
-const repo = params.get('repo') || '—';
-const name = params.get('name') || repo.split('/').pop() || 'پروژه';
-document.getElementById('project-title').textContent = name;
-document.getElementById('project-repo').textContent = repo;
-document.getElementById('metric-project').textContent = name;
+const projectId = params.get('project_id');
+let project = null;
 
-document.querySelectorAll('.workspace-tab').forEach(tab => tab.addEventListener('click', () => {
-  document.querySelectorAll('.workspace-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.workspace-panel').forEach(p => p.classList.add('hidden'));
-  tab.classList.add('active');
-  document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
-}));
-
-function startManagerTask() {
-  const task = prompt('هدف Task را بنویسید:', 'پروژه را تحلیل کن و برنامه ساخت نسخه اول را آماده کن');
-  if (!task) return;
-  const list = document.getElementById('task-list');
-  list.classList.remove('empty-state');
-  list.innerHTML = '<div class="task-card"><span class="status-dot"></span><div><b>' + escapeHtml(task) + '</b><small>QUEUED → PLANNING → RUNNING</small></div><span class="live-badge">QUEUED</span></div>';
-  document.getElementById('metric-tasks').textContent = '1';
-  document.getElementById('activity-log').insertAdjacentHTML('afterbegin', '<div>● Task queued: ' + escapeHtml(task) + '</div>');
-  showToast('Task به صف اجرا اضافه شد', 'success');
+function escapeHtml(v){return String(v ?? '').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function logActivity(text){document.getElementById('activity-log').insertAdjacentHTML('afterbegin','<div>● '+escapeHtml(text)+'</div>');}
+function setStatus(status){
+  document.getElementById('project-status').textContent=String(status||'—').toUpperCase();
+  document.getElementById('metric-status').textContent=String(status||'—').toUpperCase();
 }
-function escapeHtml(v){return v.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-</script>
-{% endblock %}
+async function loadProject(){
+  if(!projectId){showToast('شناسه پروژه وجود ندارد','error');return;}
+  try{
+    project=await API.getProject(projectId);
+    document.getElementById('project-title').textContent=project.name;
+    document.getElementById('project-repo').textContent=project.repository||'Repository محلی';
+    document.getElementById('metric-project').textContent=project.id;
+    document.getElementById('project-request').textContent=project.request;
+    setStatus(project.status); logActivity('Project loaded: '+project.name);
+  }catch(e){showToast(e.message,'error');logActivity('Load failed: '+e.message);}
+}
+async function runManagerTask(){
+  if(!projectId||!project)return;
+  const button=document.getElementById('run-button'); button.disabled=true; button.textContent='Manager در حال اجرا...';
+  setStatus('running'); logActivity('Manager execution started'); showToast('Manager اجرای پروژه را شروع کرد','info');
+  try{
+    const result=await API.runProject(projectId,project.request,'developer');
+    project=result.project||project; setStatus(project.status); document.getElementById('metric-tasks').textContent='1';
+    document.getElementById('task-list').className='';
+    document.getElementById('task-list').innerHTML='<div class="task-card"><span class="status-dot"></span><div><b>Manager Runtime</b><small>اجرای درخواست پروژه</small></div><span class="live-badge">'+escapeHtml(project.status).toUpperCase()+'</span></div>';
+    logActivity('Manager execution completed'); showToast('اجرای پروژه با موفقیت تمام شد','success');
+  }catch(e){setStatus('failed');logActivity('Manager execution failed: '+e.message);showToast(e.message,'error');}
+  finally{button.disabled=false;button.textContent='اجرای پروژه ↗';}
+}
+document.querySelectorAll('.workspace-tab').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('.workspace-tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.workspace-panel').forEach(p=>p.classList.add('hidden'));tab.classList.add('active');document.getElementById('tab-'+tab.dataset.tab).classList.remove('hidden');}));
+loadProject();
+</script>{% endblock %}
