@@ -12,6 +12,36 @@ from services.workflow_store import WorkflowStore
 from runtime import ManagerRuntime
 
 
+def _has_cycle(tasks: list[dict]) -> bool:
+    """وجود چرخه در Dependencyهای Workflow را بررسی می‌کند."""
+    graph = {str(task["id"]): [str(dep) for dep in task.get("depends_on", [])] for task in tasks}
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting: return True
+        if node in visited: return False
+        visiting.add(node)
+        for dependency in graph.get(node, []):
+            if visit(dependency): return True
+        visiting.remove(node); visited.add(node); return False
+
+    return any(visit(node) for node in graph)
+
+
+def _merge_report_into_workflow(workflow_data: dict, report: dict) -> dict:
+    """وضعیت واقعی اجرای Taskها را داخل Snapshot ذخیره‌شده Workflow می‌نشاند."""
+    by_id = {str(item.get("id")): item for item in report.get("tasks", [])}
+    for task in workflow_data.get("tasks", []):
+        runtime_task = by_id.get(str(task.get("id")))
+        if runtime_task is None: continue
+        task["status"] = runtime_task.get("status", task.get("status", "pending"))
+        task["result"] = runtime_task.get("result")
+        task["error"] = runtime_task.get("error")
+        task["attempts"] = runtime_task.get("attempts", task.get("attempts", 0))
+    return workflow_data
+
+
 def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
                wordpress_connection_api: WordPressConnectionHttpApi | None = None,
                project_store: ProjectStore | None = None,
@@ -32,16 +62,11 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
     @app.post("/api/agents/create")
     def create_agent():
         payload = request.get_json(silent=True) or {}
-        name = str(payload.get("name", "")).strip()
-        description = str(payload.get("description", "")).strip()
-        system_prompt = str(payload.get("system_prompt", "")).strip()
-        capabilities = payload.get("capabilities", [])
-        if not name or not description or not system_prompt:
-            return jsonify({"error": "name، description و system_prompt الزامی هستند."}), 400
+        name = str(payload.get("name", "")).strip(); description = str(payload.get("description", "")).strip(); system_prompt = str(payload.get("system_prompt", "")).strip(); capabilities = payload.get("capabilities", [])
+        if not name or not description or not system_prompt: return jsonify({"error": "name، description و system_prompt الزامی هستند."}), 400
         if not isinstance(capabilities, list): return jsonify({"error": "capabilities باید آرایه باشد."}), 400
         capabilities = [str(item).strip() for item in capabilities if str(item).strip()]
-        if len(name) > 80 or len(description) > 500 or len(system_prompt) > 12000:
-            return jsonify({"error": "طول یکی از فیلدها بیش از حد مجاز است."}), 400
+        if len(name) > 80 or len(description) > 500 or len(system_prompt) > 12000: return jsonify({"error": "طول یکی از فیلدها بیش از حد مجاز است."}), 400
         try: record = manager_runtime.create_custom_agent(name, description, system_prompt, capabilities)
         except ValueError as error: return jsonify({"error": str(error)}), 400
         return jsonify(record), 201
@@ -51,10 +76,8 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
 
     @app.delete("/api/agents/custom/<name>")
     def delete_custom_agent(name: str):
-        if name in {"developer", "research", "qa", "security", "github", "github-project", "website-audit-runner"}:
-            return jsonify({"error": "ایجنت‌های هسته قابل حذف نیستند."}), 400
-        return (jsonify({"deleted": True, "name": name}) if manager_runtime.delete_custom_agent(name)
-                else (jsonify({"error": "ایجنت سفارشی پیدا نشد."}), 404))
+        if name in {"developer", "research", "qa", "security", "github", "github-project", "website-audit-runner"}: return jsonify({"error": "ایجنت‌های هسته قابل حذف نیستند."}), 400
+        return (jsonify({"deleted": True, "name": name}) if manager_runtime.delete_custom_agent(name) else (jsonify({"error": "ایجنت سفارشی پیدا نشد."}), 404))
 
     @app.post("/api/agents/<name>/enable")
     def enable_agent(name: str): return jsonify(team_api.enable(name))
@@ -64,8 +87,7 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
 
     @app.post("/api/run")
     def run_request():
-        payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip()
-        agent = str(payload.get("agent", "developer")).strip() or "developer"
+        payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip(); agent = str(payload.get("agent", "developer")).strip() or "developer"
         if not text: return jsonify({"error": "فیلد request الزامی است."}), 400
         return jsonify(manager_runtime.run(text, agent).to_dict())
 
@@ -77,16 +99,14 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
 
     @app.post("/api/workflow/plan")
     def plan_workflow():
-        payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip()
-        agent = str(payload.get("agent", "")).strip() or None
+        payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip(); agent = str(payload.get("agent", "")).strip() or None
         if not text: return jsonify({"error": "فیلد request الزامی است."}), 400
         try: return jsonify(workflow.plan(text, agent).to_dict())
         except (KeyError, PermissionError, ValueError) as error: return jsonify({"error": str(error)}), 400
 
     @app.post("/api/workflow/run")
     def run_workflow():
-        payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip()
-        agent = str(payload.get("agent", "")).strip() or None
+        payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip(); agent = str(payload.get("agent", "")).strip() or None
         if not text: return jsonify({"error": "فیلد request الزامی است."}), 400
         try: return jsonify(workflow.execute(text, agent))
         except (KeyError, PermissionError, ValueError) as error: return jsonify({"error": str(error)}), 400
@@ -96,12 +116,9 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
 
     @app.post("/api/project/create")
     def create_project():
-        payload = request.get_json(silent=True) or {}
-        name, description, project_request = (str(payload.get(k, "")).strip() for k in ("name", "description", "request"))
+        payload = request.get_json(silent=True) or {}; name, description, project_request = (str(payload.get(k, "")).strip() for k in ("name", "description", "request"))
         if not name or not description or not project_request: return jsonify({"error": "name، description و request الزامی هستند."}), 400
-        project = projects.create(name=name, description=description, request=project_request, project_type=str(payload.get("project_type", "other")), is_private=bool(payload.get("private", True)))
-        activity.add(project["id"], "project.created", "پروژه ایجاد شد.")
-        return jsonify(project), 201
+        project = projects.create(name=name, description=description, request=project_request, project_type=str(payload.get("project_type", "other")), is_private=bool(payload.get("private", True))); activity.add(project["id"], "project.created", "پروژه ایجاد شد."); return jsonify(project), 201
 
     @app.get("/api/project/<project_id>")
     def get_project(project_id: str):
@@ -110,59 +127,47 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
 
     @app.get("/api/project/<project_id>/workflow")
     def get_project_workflow(project_id: str):
-        if not projects.get(project_id): return jsonify({"error": "پروژه پیدا نشد."}), 404
+        project = projects.get(project_id)
+        if not project: return jsonify({"error": "پروژه پیدا نشد."}), 404
         saved = workflows.get(project_id)
         if saved: return jsonify(saved["workflow"])
         try:
-            plan = workflow.plan(projects.get(project_id)["request"]).to_dict()
-            workflows.save(project_id, plan)
-            return jsonify(plan)
+            plan = workflow.plan(project["request"]).to_dict(); workflows.save(project_id, plan); return jsonify(plan)
         except (KeyError, PermissionError, ValueError) as error: return jsonify({"error": str(error)}), 400
 
     @app.put("/api/project/<project_id>/workflow")
     def update_project_workflow(project_id: str):
         if not projects.get(project_id): return jsonify({"error": "پروژه پیدا نشد."}), 404
-        payload = request.get_json(silent=True) or {}
-        plan = payload.get("workflow", payload)
-        if not isinstance(plan, dict) or not isinstance(plan.get("tasks"), list):
-            return jsonify({"error": "workflow باید شامل tasks باشد."}), 400
-        tasks = plan["tasks"]
-        ids = [str(t.get("id", "")).strip() for t in tasks if isinstance(t, dict)]
-        if len(ids) != len(tasks) or not all(ids) or len(set(ids)) != len(ids):
-            return jsonify({"error": "شناسه Taskها باید یکتا و معتبر باشند."}), 400
+        payload = request.get_json(silent=True) or {}; plan = payload.get("workflow", payload)
+        if not isinstance(plan, dict) or not isinstance(plan.get("tasks"), list): return jsonify({"error": "workflow باید شامل tasks باشد."}), 400
+        tasks = plan["tasks"]; ids = [str(t.get("id", "")).strip() for t in tasks if isinstance(t, dict)]
+        if len(ids) != len(tasks) or not all(ids) or len(set(ids)) != len(ids): return jsonify({"error": "شناسه Taskها باید یکتا و معتبر باشند."}), 400
         id_set = set(ids)
         for task in tasks:
-            if not isinstance(task, dict) or not str(task.get("title", "")).strip() or not str(task.get("agent", "")).strip():
-                return jsonify({"error": "هر Task باید title و agent داشته باشد."}), 400
+            if not isinstance(task, dict) or not str(task.get("title", "")).strip() or not str(task.get("agent", "")).strip(): return jsonify({"error": "هر Task باید title و agent داشته باشد."}), 400
             deps = task.get("depends_on", [])
-            if not isinstance(deps, list) or any(str(dep) not in id_set for dep in deps) or str(task["id"]) in {str(dep) for dep in deps}:
-                return jsonify({"error": "Dependencyهای Workflow نامعتبر هستند."}), 400
+            if not isinstance(deps, list) or any(str(dep) not in id_set for dep in deps) or str(task["id"]) in {str(dep) for dep in deps}: return jsonify({"error": "Dependencyهای Workflow نامعتبر هستند."}), 400
+        if _has_cycle(tasks): return jsonify({"error": "چرخه در Dependencyهای Workflow مجاز نیست."}), 400
         plan["edges"] = [{"from": dep, "to": task["id"]} for task in tasks for dep in task.get("depends_on", [])]
-        saved = workflows.save(project_id, plan)
-        activity.add(project_id, "workflow.updated", "Workflow توسط کاربر ویرایش و ذخیره شد.")
-        return jsonify(saved["workflow"])
+        saved = workflows.save(project_id, plan); activity.add(project_id, "workflow.updated", "Workflow توسط کاربر ویرایش و ذخیره شد."); return jsonify(saved["workflow"])
 
     @app.post("/api/project/<project_id>/workflow/run")
     def run_saved_workflow(project_id: str):
-        if not projects.get(project_id): return jsonify({"error": "پروژه پیدا نشد."}), 404
+        project = projects.get(project_id)
+        if not project: return jsonify({"error": "پروژه پیدا نشد."}), 404
         saved = workflows.get(project_id)
         if not saved: return jsonify({"error": "Workflow ذخیره‌شده وجود ندارد."}), 404
         from manager.task import Task
         from manager.task_status import TaskStatus
-        tasks = []
-        for raw in saved["workflow"].get("tasks", []):
-            tasks.append(Task(id=str(raw["id"]), title=str(raw["title"]), description=str(raw.get("description", "")), agent=str(raw["agent"]), depends_on=[str(x) for x in raw.get("depends_on", [])], status=TaskStatus.PENDING, max_attempts=int(raw.get("max_attempts", 5))))
-        projects.set_status(project_id, "running")
-        activity.add(project_id, "workflow.running", "Workflow ویرایش‌شده در حال اجراست.")
+        tasks = [Task(id=str(raw["id"]), title=str(raw["title"]), description=str(raw.get("description", "")), agent=str(raw["agent"]), depends_on=[str(x) for x in raw.get("depends_on", [])], status=TaskStatus.PENDING, max_attempts=int(raw.get("max_attempts", 5))) for raw in saved["workflow"].get("tasks", [])]
+        projects.set_status(project_id, "running"); activity.add(project_id, "workflow.running", "Workflow ویرایش‌شده در حال اجراست.")
         try:
-            report = manager_runtime.run_tasks(tasks)
-            final = "completed" if report.to_dict().get("status") in {"success", "completed"} else "failed"
-            projects.set_status(project_id, final)
+            report = manager_runtime.run_tasks(tasks); report_data = report.to_dict(); final = "completed" if report_data.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
+            updated_workflow = _merge_report_into_workflow(saved["workflow"], report_data); workflows.save(project_id, updated_workflow)
             activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow ویرایش‌شده: {final}")
-            return jsonify({"workflow": saved["workflow"], "report": report.to_dict(), "project": projects.get(project_id)})
+            return jsonify({"workflow": updated_workflow, "report": report_data, "project": projects.get(project_id)})
         except Exception as error:
-            projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error))
-            return jsonify({"error": str(error)}), 500
+            projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error)); return jsonify({"error": str(error)}), 500
 
     @app.post("/api/project/<project_id>/run")
     def run_project(project_id: str):
@@ -170,11 +175,8 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         if not project: return jsonify({"error": "پروژه پیدا نشد."}), 404
         payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip() or str(project["request"]).strip(); agent = str(payload.get("agent", "")).strip() or None
         try:
-            projects.set_status(project_id, "planning"); activity.add(project_id, "workflow.planning", "برنامه Workflow ساخته شد.")
-            execution = workflow.execute(text, agent); report = execution["report"]
-            final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
-            activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow: {final}")
-            workflows.save(project_id, execution["workflow"])
+            projects.set_status(project_id, "planning"); activity.add(project_id, "workflow.planning", "برنامه Workflow ساخته شد."); execution = workflow.execute(text, agent); report = execution["report"]; final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
+            execution["workflow"] = _merge_report_into_workflow(execution["workflow"], report); activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow: {final}"); workflows.save(project_id, execution["workflow"])
             return jsonify({"project": projects.get(project_id), "workflow": execution["workflow"], "report": report})
         except Exception as error:
             projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error)); return jsonify({"error": "اجرای پروژه ناموفق بود.", "detail": str(error)}), 500
