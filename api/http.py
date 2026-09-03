@@ -5,7 +5,7 @@ from flask import Flask, jsonify, request
 from api.agent_team_api import AgentTeamAPI
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from manager.request_router import route_request
-from platform.project_store import ProjectStore
+from services.project_store import ProjectStore
 from runtime import ManagerRuntime
 
 
