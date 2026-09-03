@@ -64,6 +64,21 @@ class ProjectStore:
         result["is_private"] = bool(result["is_private"])
         return result
 
+    def set_status(self, project_id: str, status: str) -> dict[str, object] | None:
+        """وضعیت چرخه عمر پروژه را به‌صورت اتمیک به‌روزرسانی می‌کند."""
+        allowed = {"created", "planning", "running", "testing", "completed", "failed", "paused"}
+        normalized = status.strip().lower()
+        if normalized not in allowed:
+            raise ValueError(f"وضعیت نامعتبر پروژه: {status}")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE projects SET status = ? WHERE id = ?",
+                (normalized, project_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get(project_id)
+
     def list(self) -> list[dict[str, object]]:
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
