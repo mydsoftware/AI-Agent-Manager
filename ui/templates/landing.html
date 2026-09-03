@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}هسته مرکزی هوش مصنوعی | AI-Agent-Manager{% endblock %}
+
+{% block content %}
+<section class="hero-shell">
+  <div class="hero-grid"></div>
+  <div class="hero-copy">
+    <div class="eyebrow"><span class="status-dot"></span> AI FACTORY • AUTONOMOUS DEVELOPMENT</div>
+    <h1>از ایده تا اجرا؛<br><span>هوش مصنوعی، پروژه را برایت می‌سازد.</span></h1>
+    <p>هسته مرکزی هوش مصنوعی برای برنامه‌ریزی، انتخاب ایجنت، تولید کد، تست، رفع خطا و استقرار پروژه‌ها.</p>
+    <div class="hero-actions">
+      <a href="/app" class="btn-primary">ورود به Command Center ↗</a>
+      <a href="#how" class="btn-ghost">نحوه کار را ببینید</a>
+    </div>
+    <div class="hero-trust"><span>✓ Agentic Workflow</span><span>✓ GitHub + Vercel</span><span>✓ Free LLM Routing</span></div>
+  </div>
+  <div class="hero-console glass-panel">
+    <div class="console-head"><span>MANAGER AGENT</span><span class="live-badge">● LIVE</span></div>
+    <div class="console-input">امروز چه چیزی می‌خواهید بسازید؟</div>
+    <div class="workflow-mini">
+      <div class="flow-node active"><b>01</b><span>Intent</span></div><i>→</i>
+      <div class="flow-node"><b>02</b><span>Planner</span></div><i>→</i>
+      <div class="flow-node"><b>03</b><span>Agents</span></div><i>→</i>
+      <div class="flow-node"><b>04</b><span>Build</span></div>
+    </div>
+    <div class="activity-line"><span class="pulse-ring"></span> Manager در حال آماده‌سازی Workflow...</div>
+  </div>
+</section>
+
+<section id="how" class="section-block">
+  <div class="section-heading"><span>CORE</span><h2>یک مرکز فرماندهی برای تمام پروژه‌ها</h2><p>به‌جای مدیریت ده‌ها ابزار، هدف را بگو؛ سیستم مسیر اجرا را می‌سازد.</p></div>
+  <div class="feature-grid">
+    <article class="feature-card"><div class="feature-icon">◈</div><h3>Natural Language → Project</h3><p>ایده را به پروژه، نیازمندی، معماری و Task Graph تبدیل کن.</p></article>
+    <article class="feature-card"><div class="feature-icon">⌘</div><h3>Dynamic Agent Selection</h3><p>Manager بر اساس هدف، ابزار و قابلیت مدل، ایجنت مناسب را انتخاب می‌کند.</p></article>
+    <article class="feature-card"><div class="feature-icon">↻</div><h3>Autonomous Development Loop</h3><p>Build، Test، Fix، Commit، Deploy و Verify در یک چرخه خودکار.</p></article>
+    <article class="feature-card"><div class="feature-icon">⌁</div><h3>Human-in-the-Loop</h3><p>برای عملیات حساس، Approval Center کنترل نهایی را دست شما نگه می‌دارد.</p></article>
+  </div>
+</section>
+
+<section class="cta-panel glass-panel"><div><span class="eyebrow">READY TO BUILD?</span><h2>پروژه بعدی‌ات را همین‌جا شروع کن.</h2></div><a href="/app" class="btn-primary">شروع ساخت پروژه</a></section>
+{% endblock %}
