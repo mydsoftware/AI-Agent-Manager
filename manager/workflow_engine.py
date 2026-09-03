@@ -72,7 +72,7 @@ class WorkflowEngine:
         )
 
     def execute(self, request: str, agent: str | None = None) -> dict[str, Any]:
-        """Workflow را از مسیر ManagerRuntime واقعی اجرا می‌کند."""
+        """گراف واقعی را می‌سازد و همان Taskها را از Executor اجرا می‌کند."""
         plan = self.plan(request, agent)
-        report = self.runtime.run(request, agent or plan.selected_agent)
+        report = self.runtime.run_tasks(plan.tasks)
         return {"workflow": plan.to_dict(), "report": report.to_dict()}
