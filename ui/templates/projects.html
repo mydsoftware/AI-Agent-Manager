@@ -12,7 +12,7 @@
     <div class="metric"><span>Pending</span><strong id="pending-projects">0</strong><small>در انتظار</small></div>
     <div class="metric"><span>Runtime</span><strong>READY</strong><small>AI Factory</small></div>
   </div>
-  <div class="panel"><div class="panel-head"><div><span class="eyebrow">WORKSPACES</span><h2>پروژه‌های اخیر</h2></div></div><div id="projects-list" class="empty-state">هنوز پروژه‌ای در این Workspace ثبت نشده است.<br><button onclick="showCreateModal()" class="text-link mt-3">ساخت اولین پروژه ←</button></div></div>
+  <div class="panel"><div class="panel-head"><div><span class="eyebrow">WORKSPACES</span><h2>پروژه‌های اخیر</h2></div></div><div id="projects-list" class="empty-state">در حال بارگذاری پروژه‌ها...</div></div>
 </div>
 <div id="create-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 backdrop-blur-sm">
   <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6">
@@ -33,15 +33,29 @@
 function showCreateModal(){document.getElementById('create-modal').classList.remove('hidden');document.getElementById('create-modal').classList.add('flex');document.getElementById('project-name').focus();}
 function closeCreateModal(){document.getElementById('create-modal').classList.add('hidden');document.getElementById('create-modal').classList.remove('flex');}
 function esc(v){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+async function loadProjects(){
+  const list=document.getElementById('projects-list');
+  try{
+    const response=await fetch('/api/proxy/projects'); const projects=await response.json();
+    if(!Array.isArray(projects)) throw new Error(projects.error||'پاسخ نامعتبر');
+    document.getElementById('total-projects').textContent=projects.length;
+    document.getElementById('active-projects').textContent=projects.filter(p=>['running','active'].includes(p.status)).length;
+    document.getElementById('pending-projects').textContent=projects.filter(p=>['queued','pending'].includes(p.status)).length;
+    if(!projects.length){list.className='empty-state';list.innerHTML='هنوز پروژه‌ای در این Workspace ثبت نشده است.<br><button onclick="showCreateModal()" class="text-link mt-3">ساخت اولین پروژه ←</button>';return;}
+    list.className='agent-list';
+    list.innerHTML=projects.map(p=>`<button class="agent-row" onclick="openProject('${esc(p.id)}','${esc(p.repository||'')}','${esc(p.name)}')"><span class="agent-icon">📁</span><span><b>${esc(p.name)}</b><small>${esc(p.description)} · ${esc(p.status)}</small></span><i>›</i></button>`).join('');
+  }catch(error){list.className='empty-state';list.textContent='خطا در بارگذاری پروژه‌ها: '+error.message;}
+}
+function openProject(id,repo,name){location.href='/projects/workspace?project_id='+encodeURIComponent(id)+'&repo='+encodeURIComponent(repo)+'&name='+encodeURIComponent(name);}
 document.getElementById('create-project-form').addEventListener('submit',async e=>{
  e.preventDefault(); const btn=document.getElementById('create-btn'); btn.disabled=true; btn.textContent='در حال ساخت...';
  try{
   const result=await API.createProject({name:document.getElementById('project-name').value.trim(),description:document.getElementById('project-description').value.trim(),request:document.getElementById('project-request').value.trim(),project_type:document.getElementById('project-type').value,private:document.getElementById('project-private').checked});
   if(result.error) throw new Error(result.error);
   showToast('پروژه ساخته شد؛ ورود به Workspace...','success');
-  const target='/projects/workspace?repo='+encodeURIComponent(result.repository||'')+'&name='+encodeURIComponent(document.getElementById('project-name').value.trim());
-  setTimeout(()=>location.href=target,350);
+  openProject(result.id,result.repository,result.name);
  }catch(err){showToast('خطا: '+err.message,'error');btn.disabled=false;btn.textContent='ساخت پروژه و Workspace';}
 });
+loadProjects();
 </script>
 {% endblock %}
