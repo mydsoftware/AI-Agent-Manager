@@ -1,169 +1,47 @@
 {% extends "base.html" %}
-
-{% block title %}پروژه‌ها - AI Agent Manager{% endblock %}
-
+{% block title %}پروژه‌ها - AI-Agent-Manager{% endblock %}
 {% block content %}
 <div class="space-y-6">
-    <!-- هدر -->
-    <div class="flex justify-between items-center">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-800">📁 مدیریت پروژه‌ها</h1>
-            <p class="text-gray-600 mt-1">ایجاد و مدیریت پروژه‌های شما</p>
-        </div>
-        <button onclick="showCreateModal()" class="btn-primary">
-            ➕ پروژه جدید
-        </button>
-    </div>
-
-    <!-- آمار -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="stat-card">
-            <div class="text-3xl mb-2">📁</div>
-            <div class="text-2xl font-bold text-gray-800" id="total-projects">0</div>
-            <div class="text-sm text-gray-600">کل پروژه‌ها</div>
-        </div>
-        <div class="stat-card">
-            <div class="text-3xl mb-2">✅</div>
-            <div class="text-2xl font-bold text-green-600" id="active-projects">0</div>
-            <div class="text-sm text-gray-600">فعال</div>
-        </div>
-        <div class="stat-card">
-            <div class="text-3xl mb-2">⏳</div>
-            <div class="text-2xl font-bold text-yellow-600" id="pending-projects">0</div>
-            <div class="text-sm text-gray-600">در انتظار</div>
-        </div>
-    </div>
-
-    <!-- لیست پروژه‌ها -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 class="text-lg font-bold text-gray-800 mb-4">📋 لیست پروژه‌ها</h2>
-        <div id="projects-list" class="space-y-3">
-            <div class="text-center py-8 text-gray-500">
-                <div class="text-4xl mb-4">📁</div>
-                <p>هنوز پروژه‌ای ایجاد نشده است</p>
-                <button onclick="showCreateModal()" class="mt-4 text-primary-600 hover:text-primary-700">
-                    ➕ پروژه جدید ایجاد کنید
-                </button>
-            </div>
-        </div>
-    </div>
+  <div class="flex justify-between items-center">
+    <div><div class="eyebrow">PROJECTS</div><h1 class="text-2xl font-bold">📁 مدیریت پروژه‌ها</h1><p class="text-gray-600 mt-1">هر پروژه یک Workspace مستقل برای Agent، Memory، Knowledge و Files دارد.</p></div>
+    <button onclick="showCreateModal()" class="btn-primary">➕ پروژه جدید</button>
+  </div>
+  <div class="stats-grid">
+    <div class="metric"><span>Projects</span><strong id="total-projects">0</strong><small>Workspace</small></div>
+    <div class="metric"><span>Active</span><strong class="ok" id="active-projects">0</strong><small>در حال اجرا</small></div>
+    <div class="metric"><span>Pending</span><strong id="pending-projects">0</strong><small>در انتظار</small></div>
+    <div class="metric"><span>Runtime</span><strong>READY</strong><small>AI Factory</small></div>
+  </div>
+  <div class="panel"><div class="panel-head"><div><span class="eyebrow">WORKSPACES</span><h2>پروژه‌های اخیر</h2></div></div><div id="projects-list" class="empty-state">هنوز پروژه‌ای در این Workspace ثبت نشده است.<br><button onclick="showCreateModal()" class="text-link mt-3">ساخت اولین پروژه ←</button></div></div>
 </div>
-
-<!-- مودال ایجاد پروژه -->
-<div id="create-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-        <div class="p-6 border-b border-gray-200">
-            <div class="flex justify-between items-center">
-                <h3 class="text-lg font-bold text-gray-800">➕ پروژه جدید</h3>
-                <button onclick="closeCreateModal()" class="text-gray-500 hover:text-gray-700">✕</button>
-            </div>
-        </div>
-        <form id="create-project-form" class="p-6 space-y-4">
-            <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">نام پروژه</label>
-                <input type="text" id="project-name" class="input-field" placeholder="نام پروژه" required>
-            </div>
-            <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">توضیحات</label>
-                <textarea id="project-description" class="input-field" rows="3" placeholder="توضیحات پروژه" required></textarea>
-            </div>
-            <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">درخواست</label>
-                <textarea id="project-request" class="input-field" rows="3" placeholder="درخواست اولیه پروژه" required></textarea>
-            </div>
-            <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">نوع پروژه</label>
-                <select id="project-type" class="input-field">
-                    <option value="website">وب‌سایت</option>
-                    <option value="api">API</option>
-                    <option value="app">اپلیکیشن</option>
-                    <option value="other">سایر</option>
-                </select>
-            </div>
-            <div class="flex gap-2">
-                <button type="submit" class="btn-primary flex-1">ایجاد پروژه</button>
-                <button type="button" onclick="closeCreateModal()" class="btn-secondary">لغو</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- مودال جزئیات پروژه -->
-<div id="details-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
-        <div class="p-6 border-b border-gray-200">
-            <div class="flex justify-between items-center">
-                <h3 class="text-lg font-bold text-gray-800" id="details-title">جزئیات پروژه</h3>
-                <button onclick="closeDetailsModal()" class="text-gray-500 hover:text-gray-700">✕</button>
-            </div>
-        </div>
-        <div id="details-content" class="p-6 overflow-y-auto max-h-[60vh]">
-            <!-- محتوا -->
-        </div>
-    </div>
+<div id="create-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 backdrop-blur-sm">
+  <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 p-6">
+    <div class="flex justify-between items-center mb-5"><h3 class="text-lg font-bold">➕ ساخت پروژه</h3><button onclick="closeCreateModal()">✕</button></div>
+    <form id="create-project-form" class="space-y-4">
+      <input type="text" id="project-name" class="input-field" placeholder="نام پروژه" required>
+      <textarea id="project-description" class="input-field" rows="3" placeholder="توضیح ساده پروژه" required></textarea>
+      <textarea id="project-request" class="input-field" rows="4" placeholder="مثلاً: یک سایت فروشگاهی فارسی بساز و روی Vercel منتشر کن" required></textarea>
+      <select id="project-type" class="input-field"><option value="website">Website</option><option value="api">API</option><option value="app">App</option><option value="wordpress">WordPress</option><option value="other">Other</option></select>
+      <label class="flex gap-2 items-center text-sm"><input id="project-private" type="checkbox" checked> Repository خصوصی باشد</label>
+      <div class="flex gap-2"><button id="create-btn" type="submit" class="btn-primary flex-1">ساخت پروژه و Workspace</button><button type="button" onclick="closeCreateModal()" class="btn-secondary">لغو</button></div>
+    </form>
+  </div>
 </div>
 {% endblock %}
-
 {% block scripts %}
 <script>
-    // نمایش مودال ایجاد
-    function showCreateModal() {
-        document.getElementById('create-modal').classList.remove('hidden');
-        document.getElementById('create-modal').classList.add('flex');
-    }
-
-    // بستن مودال ایجاد
-    function closeCreateModal() {
-        document.getElementById('create-modal').classList.add('hidden');
-        document.getElementById('create-modal').classList.remove('flex');
-        document.getElementById('create-project-form').reset();
-    }
-
-    // ایجاد پروژه
-    document.getElementById('create-project-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const name = document.getElementById('project-name').value.trim();
-        const description = document.getElementById('project-description').value.trim();
-        const request = document.getElementById('project-request').value.trim();
-        const projectType = document.getElementById('project-type').value;
-
-        try {
-            const result = await API.createProject({
-                name,
-                description,
-                request,
-                project_type: projectType
-            });
-            
-            alert('پروژه با موفقیت ایجاد شد!');
-            closeCreateModal();
-            loadProjects();
-        } catch (error) {
-            alert('خطا در ایجاد پروژه: ' + error.message);
-        }
-    });
-
-    // بارگذاری پروژه‌ها
-    async function loadProjects() {
-        // در حال حاضر API لیست پروژه‌ها ندارد
-        // این بخش با API آینده تکمیل می‌شود
-        const listDiv = document.getElementById('projects-list');
-        listDiv.innerHTML = `
-            <div class="text-center py-8 text-gray-500">
-                <div class="text-4xl mb-4">📁</div>
-                <p>پروژه‌ها از طریق API مدیریت می‌شوند</p>
-                <p class="text-sm mt-2">از مودال بالا برای ایجاد پروژه جدید استفاده کنید</p>
-            </div>
-        `;
-    }
-
-    // بستن مودال جزئیات
-    function closeDetailsModal() {
-        document.getElementById('details-modal').classList.add('hidden');
-        document.getElementById('details-modal').classList.remove('flex');
-    }
-
-    // بارگذاری اولیه
-    loadProjects();
+function showCreateModal(){document.getElementById('create-modal').classList.remove('hidden');document.getElementById('create-modal').classList.add('flex');document.getElementById('project-name').focus();}
+function closeCreateModal(){document.getElementById('create-modal').classList.add('hidden');document.getElementById('create-modal').classList.remove('flex');}
+function esc(v){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+document.getElementById('create-project-form').addEventListener('submit',async e=>{
+ e.preventDefault(); const btn=document.getElementById('create-btn'); btn.disabled=true; btn.textContent='در حال ساخت...';
+ try{
+  const result=await API.createProject({name:document.getElementById('project-name').value.trim(),description:document.getElementById('project-description').value.trim(),request:document.getElementById('project-request').value.trim(),project_type:document.getElementById('project-type').value,private:document.getElementById('project-private').checked});
+  if(result.error) throw new Error(result.error);
+  showToast('پروژه ساخته شد؛ ورود به Workspace...','success');
+  const target='/projects/workspace?repo='+encodeURIComponent(result.repository||'')+'&name='+encodeURIComponent(document.getElementById('project-name').value.trim());
+  setTimeout(()=>location.href=target,350);
+ }catch(err){showToast('خطا: '+err.message,'error');btn.disabled=false;btn.textContent='ساخت پروژه و Workspace';}
+});
 </script>
 {% endblock %}
