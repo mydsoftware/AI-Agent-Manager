@@ -6,20 +6,21 @@ from manager.task_status import TaskStatus
 
 
 class TaskExecutor:
-    """وظایف را با رعایت وابستگی‌ها برای حلقه ایجنت اجرا می‌کند."""
+    """وظایف را با رعایت وابستگی‌ها و تلاش مجدد اجرا می‌کند."""
 
     def __init__(self, loop: AgenticLoop) -> None:
         self.loop = loop
 
     def run(self, tasks: list[Task]) -> list[str]:
-        """وظایف را با رعایت موفقیت یا شکست وابستگی‌ها اجرا می‌کند."""
+        """Task Graph را تا تکمیل، شکست یا انسداد اجرا می‌کند."""
         remaining = {task.id: task for task in tasks}
         known = dict(remaining)
         results: list[str] = []
+        if len(known) != len(tasks):
+            raise ValueError("شناسه Taskها باید یکتا باشند.")
 
         while remaining:
             progress = False
-
             for task_id, task in list(remaining.items()):
                 missing = [dep for dep in task.depends_on if dep not in known]
                 if missing:
@@ -28,7 +29,6 @@ class TaskExecutor:
                     del remaining[task_id]
                     progress = True
                     continue
-
                 dependencies = [known[dep] for dep in task.depends_on]
                 if any(dep.status in {TaskStatus.FAILED, TaskStatus.BLOCKED} for dep in dependencies):
                     task.status = TaskStatus.BLOCKED
@@ -36,22 +36,23 @@ class TaskExecutor:
                     del remaining[task_id]
                     progress = True
                     continue
-
                 if any(dep.status != TaskStatus.SUCCESS for dep in dependencies):
                     continue
 
-                task.status = TaskStatus.RUNNING
-                try:
-                    task.result = self.loop.run([task])[0]
-                    task.status = TaskStatus.SUCCESS
-                    results.append(task.result)
-                except Exception as error:
-                    task.error = str(error)
-                    task.status = TaskStatus.FAILED
-                    del remaining[task_id]
-                    progress = True
-                    continue
-
+                while True:
+                    task.start()
+                    try:
+                        result = self.loop.run([task])[0]
+                        task.complete(result)
+                        results.append(result)
+                        break
+                    except Exception as error:
+                        task.error = str(error)
+                        if task.can_retry():
+                            task.status = TaskStatus.RETRYING
+                            continue
+                        task.fail(str(error))
+                        break
                 del remaining[task_id]
                 progress = True
 
@@ -60,5 +61,4 @@ class TaskExecutor:
                     task.status = TaskStatus.BLOCKED
                     task.error = "چرخه یا وابستگی حل‌نشده در نمودار وظایف وجود دارد."
                 raise RuntimeError("وابستگی وظایف قابل حل نیست.")
-
         return results
