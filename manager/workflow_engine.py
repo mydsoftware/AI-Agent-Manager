@@ -55,14 +55,12 @@ class WorkflowEngine:
         intent = self.intent_parser.parse(text)
         decision = self.decision_engine.decide(intent)
         selected = agent.strip() if agent and agent.strip() else decision.agent
+        tasks = self.planner.plan(intent).tasks
         if agent:
             if not self.runtime.governance.can_use(selected):
                 raise PermissionError(f"ایجنت «{selected}» غیرفعال یا غیرمجاز است.")
-            for task in self.planner.plan(intent).tasks:
+            for task in tasks:
                 task.agent = selected
-            tasks = self.planner.plan(intent).tasks
-        else:
-            tasks = self.planner.plan(intent).tasks
 
         return WorkflowPlan(
             name="dynamic_request_workflow",
