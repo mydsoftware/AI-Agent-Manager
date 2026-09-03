@@ -1,188 +1,118 @@
 from __future__ import annotations
 
 import os
-import json
-from flask import Flask, render_template, request, jsonify, session
 import requests
+from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
-
-# تنظیمات API
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-only-change-me")
 API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
-# اگر API key تنظیم نشده باشد، یک کلید پیش‌فرض برای تست استفاده می‌شود
-API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "test-key-for-development")
+API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "")
 
-# لیست ایجنت‌های موجود
 AGENTS = {
-    "developer": {"name": "توسعه‌دهنده", "icon": "💻", "desc": "بررسی و توسعه کد"},
-    "researcher": {"name": "پژوهشگر", "icon": "🔍", "desc": "تحقیق و جمع‌آوری اطلاعات"},
-    "qa": {"name": "کنترل کیفیت", "icon": "✅", "desc": "تست و کنترل کیفیت"},
-    "github": {"name": "گیت‌هاب", "icon": "🐙", "desc": "عملیات GitHub"},
-    "website-audit": {"name": "ممیزی سایت", "icon": "🌐", "desc": "ممیزی کامل سایت"},
-    "wordpress-factory": {"name": "کارخانه وردپرس", "icon": "🔧", "desc": "ساخت و راه‌اندازی وردپرس"},
-    "wordpress-security": {"name": "امنیت وردپرس", "icon": "🔒", "desc": "بررسی امنیت وردپرس"},
-    "wordpress-performance": {"name": "عملکرد وردپرس", "icon": "⚡", "desc": "بهینه‌سازی عملکرد"},
-    "wordpress-seo": {"name": "SEO وردپرس", "icon": "📈", "desc": "بهینه‌سازی موتور جستجو"},
-    "wordpress-ui": {"name": "رابط کاربری وردپرس", "icon": "🎨", "desc": "طراحی و رابط کاربری"},
+    "developer": {"name": "توسعه‌دهنده", "icon": "💻", "desc": "توسعه و اصلاح کد"},
+    "researcher": {"name": "پژوهشگر", "icon": "🔍", "desc": "تحقیق و تحلیل"},
+    "qa": {"name": "کنترل کیفیت", "icon": "✓", "desc": "تست و تضمین کیفیت"},
+    "github": {"name": "GitHub", "icon": "◉", "desc": "Repository و CI/CD"},
+    "website-audit": {"name": "ممیزی سایت", "icon": "⌁", "desc": "فنی، SEO و امنیت"},
+    "wordpress-factory": {"name": "کارخانه وردپرس", "icon": "◆", "desc": "ساخت و راه‌اندازی وردپرس"},
+    "wordpress-security": {"name": "امنیت وردپرس", "icon": "◇", "desc": "بررسی امنیت"},
+    "wordpress-performance": {"name": "عملکرد وردپرس", "icon": "↗", "desc": "بهینه‌سازی سرعت"},
+    "wordpress-seo": {"name": "SEO وردپرس", "icon": "⌁", "desc": "بهینه‌سازی موتور جستجو"},
+    "wordpress-ui": {"name": "رابط کاربری وردپرس", "icon": "✦", "desc": "طراحی رابط کاربری"},
 }
 
 
-def api_call(endpoint: str, method: str = "GET", data: dict = None) -> dict:
-    """فراخوانی API مرکزی"""
-    headers = {
-        "Content-Type": "application/json",
-    }
-    # فقط کلید واقعی ارسال شود (کلید پیش‌فرض = حالت توسعه)
-    if API_KEY and API_KEY != "test-key-for-development":
+def api_call(endpoint: str, method: str = "GET", data: dict | None = None) -> dict:
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
         headers["X-API-Key"] = API_KEY
-    url = f"{API_BASE}{endpoint}"
     try:
-        if method == "GET":
-            response = requests.get(url, headers=headers, timeout=30)
-        else:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
+        response = requests.request(method, f"{API_BASE}{endpoint}", headers=headers, json=data, timeout=30)
+        response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
-
-
-@app.after_request
-def add_cors_headers(response):
-    """اضافه کردن هدر CORS"""
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key, X-Execution-ID'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    return response
+    except (requests.RequestException, ValueError) as exc:
+        return {"error": str(exc)}
 
 
 @app.route("/")
+def landing():
+    return render_template("landing.html")
+
+
+@app.route("/app")
 def dashboard():
-    """داشبورد اصلی"""
     health = api_call("/health")
-    return render_template(
-        "dashboard.html",
-        agents=AGENTS,
-        health=health,
-        api_base=API_BASE,
-    )
+    return render_template("dashboard.html", agents=AGENTS, health=health, api_base=API_BASE)
 
 
 @app.route("/execute")
 def execute_page():
-    """صفحه اجرای ایجنت"""
     return render_template("execute.html", agents=AGENTS)
 
 
 @app.route("/audit")
 def audit_page():
-    """صفحه ممیزی سایت"""
     return render_template("audit.html")
 
 
 @app.route("/projects")
 def projects_page():
-    """مدیریت پروژه‌ها"""
     return render_template("projects.html")
 
 
 @app.route("/api/execute", methods=["POST"])
 def api_execute():
-    """API اجرای ایجنت"""
-    data = request.json
-    request_text = data.get("request", "").strip()
-    agent = data.get("agent", "developer")
-
-    if not request_text:
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("request", "")).strip()
+    if not text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-
-    result = api_call("/execute", "POST", {"request": request_text, "agent": agent})
-    return jsonify(result)
+    return jsonify(api_call("/execute", "POST", {"request": text, "agent": data.get("agent", "developer")}))
 
 
 @app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
 def api_proxy(endpoint):
-    """پروکسی برای API مرکزی"""
-    if request.method == "GET":
-        result = api_call(f"/{endpoint}", "GET")
-    else:
-        result = api_call(f"/{endpoint}", "POST", request.json)
-    return jsonify(result)
+    data = request.get_json(silent=True) if request.method == "POST" else None
+    return jsonify(api_call(f"/{endpoint}", request.method, data))
 
 
 @app.route("/api/audit", methods=["POST"])
 def api_audit():
-    """API ممیزی سایت"""
-    data = request.json
-    url = data.get("url", "").strip()
-    mode = data.get("mode", "pre_contract")
-
+    data = request.get_json(silent=True) or {}
+    url = str(data.get("url", "")).strip()
     if not url:
         return jsonify({"error": "URL الزامی است"}), 400
-
-    execution_id = f"exec-{hash(url) % 10000}"
-    result = api_call(
-        "/execute/website-audit",
-        "POST",
-        {
-            "request_id": execution_id,
-            "url": url,
-            "mode": mode,
-            "language": "fa",
-        },
-    )
-    return jsonify(result)
+    return jsonify(api_call("/execute/website-audit", "POST", {"request_id": f"exec-{abs(hash(url)) % 100000}", "url": url, "mode": data.get("mode", "pre_contract"), "language": "fa"}))
 
 
 @app.route("/api/route", methods=["POST"])
 def api_route():
-    """API مسیریابی درخواست"""
-    data = request.json
-    request_text = data.get("request", "").strip()
-
-    if not request_text:
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("request", "")).strip()
+    if not text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-
-    result = api_call("/route", "POST", {"request": request_text})
-    return jsonify(result)
+    return jsonify(api_call("/route", "POST", {"request": text}))
 
 
 @app.route("/api/project/create", methods=["POST"])
 def api_project_create():
-    """API ایجاد پروژه"""
-    data = request.json
-    result = api_call("/project/create", "POST", data)
-    return jsonify(result)
+    return jsonify(api_call("/project/create", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/session/start", methods=["POST"])
 def api_session_start():
-    """API شروع نشست"""
-    data = request.json
-    result = api_call("/session/start", "POST", data)
-    return jsonify(result)
+    return jsonify(api_call("/session/start", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/session/answer", methods=["POST"])
 def api_session_answer():
-    """API پاسخ به نشست"""
-    data = request.json
-    result = api_call("/session/answer", "POST", data)
-    return jsonify(result)
+    return jsonify(api_call("/session/answer", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/executions/<execution_id>")
 def api_executions(execution_id):
-    """API دریافت وضعیت اجرا"""
-    result = api_call(f"/executions/{execution_id}")
-    return jsonify(result)
+    return jsonify(api_call(f"/executions/{execution_id}"))
 
 
 if __name__ == "__main__":
-    import sys
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-    print(f"رابط وب در http://127.0.0.1:5000 اجرا شد")
-    print(f"API مرکزی در {API_BASE}")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
