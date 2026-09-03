@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import os
-import json
-from flask import Flask, render_template, request, jsonify, session
 import requests
+from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
-# تنظیمات API
-API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
-# اگر API key تنظیم نشده باشد، یک کلید پیش‌فرض برای تست استفاده می‌شود
-API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "test-key-for-development")
+API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "")
 
-# لیست ایجنت‌های موجود
 AGENTS = {
     "developer": {"name": "توسعه‌دهنده", "icon": "💻", "desc": "بررسی و توسعه کد"},
     "researcher": {"name": "پژوهشگر", "icon": "🔍", "desc": "تحقیق و جمع‌آوری اطلاعات"},
@@ -28,161 +24,129 @@ AGENTS = {
 }
 
 
-def api_call(endpoint: str, method: str = "GET", data: dict = None) -> dict:
-    """فراخوانی API مرکزی"""
-    headers = {
-        "Content-Type": "application/json",
-    }
-    # فقط کلید واقعی ارسال شود (کلید پیش‌فرض = حالت توسعه)
-    if API_KEY and API_KEY != "test-key-for-development":
+def api_call(endpoint: str, method: str = "GET", data: dict | None = None) -> dict:
+    """فراخوانی امن API مرکزی."""
+    headers = {"Content-Type": "application/json"}
+    if API_KEY:
         headers["X-API-Key"] = API_KEY
-    url = f"{API_BASE}{endpoint}"
     try:
         if method == "GET":
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(f"{API_BASE}{endpoint}", headers=headers, timeout=30)
         else:
-            response = requests.post(url, headers=headers, json=data, timeout=30)
+            response = requests.post(f"{API_BASE}{endpoint}", headers=headers, json=data, timeout=30)
+        response.raise_for_status()
         return response.json()
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
+    except requests.exceptions.RequestException as exc:
+        return {"error": str(exc)}
+    except ValueError:
+        return {"error": "پاسخ نامعتبر از API مرکزی"}
 
 
 @app.after_request
-def add_cors_headers(response):
-    """اضافه کردن هدر CORS"""
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key, X-Execution-ID'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, X-Execution-ID"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return response
 
 
 @app.route("/")
-def dashboard():
-    """داشبورد اصلی"""
-    health = api_call("/health")
-    return render_template(
-        "dashboard.html",
-        agents=AGENTS,
-        health=health,
-        api_base=API_BASE,
-    )
+def landing():
+    return render_template("index.html", agents=AGENTS)
+
+
+@app.route("/app")
+def command_center():
+    return render_template("dashboard.html", agents=AGENTS, health=api_call("/api/health"), api_base=API_BASE)
 
 
 @app.route("/execute")
 def execute_page():
-    """صفحه اجرای ایجنت"""
     return render_template("execute.html", agents=AGENTS)
 
 
 @app.route("/audit")
 def audit_page():
-    """صفحه ممیزی سایت"""
     return render_template("audit.html")
 
 
 @app.route("/projects")
 def projects_page():
-    """مدیریت پروژه‌ها"""
-    return render_template("projects.html")
+    return render_template("projects.html", agents=AGENTS)
+
+
+@app.route("/projects/workspace")
+def project_workspace():
+    return render_template("project_workspace.html", agents=AGENTS)
 
 
 @app.route("/api/execute", methods=["POST"])
 def api_execute():
-    """API اجرای ایجنت"""
-    data = request.json
-    request_text = data.get("request", "").strip()
-    agent = data.get("agent", "developer")
-
+    data = request.get_json(silent=True) or {}
+    request_text = str(data.get("request", "")).strip()
+    agent = str(data.get("agent", "developer")).strip() or "developer"
     if not request_text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-
-    result = api_call("/execute", "POST", {"request": request_text, "agent": agent})
-    return jsonify(result)
-
-
-@app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
-def api_proxy(endpoint):
-    """پروکسی برای API مرکزی"""
-    if request.method == "GET":
-        result = api_call(f"/{endpoint}", "GET")
-    else:
-        result = api_call(f"/{endpoint}", "POST", request.json)
-    return jsonify(result)
-
-
-@app.route("/api/audit", methods=["POST"])
-def api_audit():
-    """API ممیزی سایت"""
-    data = request.json
-    url = data.get("url", "").strip()
-    mode = data.get("mode", "pre_contract")
-
-    if not url:
-        return jsonify({"error": "URL الزامی است"}), 400
-
-    execution_id = f"exec-{hash(url) % 10000}"
-    result = api_call(
-        "/execute/website-audit",
-        "POST",
-        {
-            "request_id": execution_id,
-            "url": url,
-            "mode": mode,
-            "language": "fa",
-        },
-    )
+    result = api_call("/api/run", "POST", {"request": request_text, "agent": agent})
     return jsonify(result)
 
 
 @app.route("/api/route", methods=["POST"])
 def api_route():
-    """API مسیریابی درخواست"""
-    data = request.json
-    request_text = data.get("request", "").strip()
-
+    data = request.get_json(silent=True) or {}
+    request_text = str(data.get("request", "")).strip()
     if not request_text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
+    return jsonify(api_call("/api/route", "POST", {"request": request_text}))
 
-    result = api_call("/route", "POST", {"request": request_text})
-    return jsonify(result)
+
+@app.route("/api/projects", methods=["GET"])
+def api_projects():
+    return jsonify(api_call("/api/projects"))
 
 
 @app.route("/api/project/create", methods=["POST"])
 def api_project_create():
-    """API ایجاد پروژه"""
-    data = request.json
-    result = api_call("/project/create", "POST", data)
-    return jsonify(result)
+    return jsonify(api_call("/api/project/create", "POST", request.get_json(silent=True) or {}))
+
+
+@app.route("/api/project/<project_id>")
+def api_project(project_id: str):
+    return jsonify(api_call(f"/api/project/{project_id}"))
+
+
+@app.route("/api/audit", methods=["POST"])
+def api_audit():
+    data = request.get_json(silent=True) or {}
+    url = str(data.get("url", "")).strip()
+    if not url:
+        return jsonify({"error": "URL الزامی است"}), 400
+    return jsonify(api_call("/api/run", "POST", {"request": f"ممیزی سایت {url}", "agent": "website-audit"}))
+
+
+@app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
+def api_proxy(endpoint):
+    payload = request.get_json(silent=True) or {}
+    return jsonify(api_call(f"/{endpoint}", request.method, payload if request.method == "POST" else None))
 
 
 @app.route("/api/session/start", methods=["POST"])
 def api_session_start():
-    """API شروع نشست"""
-    data = request.json
-    result = api_call("/session/start", "POST", data)
-    return jsonify(result)
+    return jsonify(api_call("/api/session/start", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/session/answer", methods=["POST"])
 def api_session_answer():
-    """API پاسخ به نشست"""
-    data = request.json
-    result = api_call("/session/answer", "POST", data)
-    return jsonify(result)
+    return jsonify(api_call("/api/session/answer", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/executions/<execution_id>")
 def api_executions(execution_id):
-    """API دریافت وضعیت اجرا"""
-    result = api_call(f"/executions/{execution_id}")
-    return jsonify(result)
+    return jsonify(api_call(f"/api/executions/{execution_id}"))
 
 
 if __name__ == "__main__":
-    import sys
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-    print(f"رابط وب در http://127.0.0.1:5000 اجرا شد")
-    print(f"API مرکزی در {API_BASE}")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")

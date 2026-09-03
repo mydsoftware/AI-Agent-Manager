@@ -1,140 +1,29 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}AI Agent Manager{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        primary: {
-                            50: '#eff6ff',
-                            100: '#dbeafe',
-                            200: '#bfdbfe',
-                            300: '#93c5fd',
-                            400: '#60a5fa',
-                            500: '#3b82f6',
-                            600: '#2563eb',
-                            700: '#1d4ed8',
-                            800: '#1e40af',
-                            900: '#1e3a8a',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#07080d"><meta name="description" content="هسته مرکزی هوش مصنوعی برای ساخت و اجرای پروژه‌ها">
+<title>{% block title %}AI-Agent-Manager{% endblock %}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body class="min-h-screen">
-    <!-- نوار بالا -->
-    <nav class="shadow-sm border-b border-gray-200 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <!-- لوگو -->
-                <div class="flex items-center">
-                    <a href="/" class="flex items-center gap-3 group">
-                        <span class="text-3xl transform group-hover:rotate-12 transition-transform duration-300">🤖</span>
-                        <span class="font-bold text-xl bg-gradient-to-l from-blue-600 to-purple-600 bg-clip-text text-transparent">AI Agent Manager</span>
-                    </a>
-                </div>
-
-                <!-- منو -->
-                <div class="flex items-center gap-2">
-                    <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
-                        <span class="ml-1">📊</span> داشبورد
-                    </a>
-                    <a href="/execute" class="nav-link {% if request.path == '/execute' %}active{% endif %}">
-                        <span class="ml-1">🚀</span> اجرا
-                    </a>
-                    <a href="/audit" class="nav-link {% if request.path == '/audit' %}active{% endif %}">
-                        <span class="ml-1">🌐</span> ممیزی
-                    </a>
-                    <a href="/projects" class="nav-link {% if request.path == '/projects' %}active{% endif %}">
-                        <span class="ml-1">📁</span> پروژه‌ها
-                    </a>
-                </div>
-
-                <!-- وضعیت و Dark Mode -->
-                <div class="flex items-center gap-4">
-                    <div id="connection-status" class="flex items-center gap-2 text-sm">
-                        <span class="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shadow-lg shadow-green-500/50"></span>
-                        <span class="text-gray-600 font-medium">متصل</span>
-                    </div>
-                    <button onclick="toggleDarkMode()" class="dark-mode-toggle" id="darkModeToggle" title="حالت شب/روز">
-                    </button>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <!-- محتوای اصلی -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- فوتر -->
-    <footer class="border-t border-gray-200 mt-auto">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div class="flex justify-between items-center text-sm text-gray-500">
-                <span class="font-medium">AI Agent Manager v1.0</span>
-                <span>ساخته شده با <span class="text-red-500 animate-pulse">❤️</span> در ایران</span>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Toast Container -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
-
-    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
-    <script>
-        // Dark Mode Toggle
-        function toggleDarkMode() {
-            document.documentElement.classList.toggle('dark');
-            document.body.classList.toggle('dark');
-            localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
-            updateDarkModeToggle();
-        }
-
-        function updateDarkModeToggle() {
-            const toggle = document.getElementById('darkModeToggle');
-            if (document.documentElement.classList.contains('dark')) {
-                toggle.classList.add('active');
-            } else {
-                toggle.classList.remove('active');
-            }
-        }
-
-        // Load dark mode preference
-        if (localStorage.getItem('darkMode') === 'true') {
-            document.documentElement.classList.add('dark');
-            document.body.classList.add('dark');
-        }
-        updateDarkModeToggle();
-
-        // Toast notifications
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <span>${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span>
-                    <span>${message}</span>
-                </div>
-            `;
-            container.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.style.animation = 'fadeIn 0.3s ease-out reverse';
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-    </script>
-    {% block scripts %}{% endblock %}
-</body>
-</html>
+<body>
+<div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+<header class="topbar">
+  <a href="/" class="brand"><span class="brand-mark">✦</span><span><b>AI-Agent-Manager</b><small>هسته مرکزی هوش مصنوعی</small></span></a>
+  <nav class="desktop-nav">
+    <a href="/">خانه</a><a href="/app">Command Center</a><a href="/projects">پروژه‌ها</a><a href="/execute">اجرا</a><a href="/audit">ممیزی</a>
+  </nav>
+  <div class="top-actions"><button class="icon-btn" onclick="toggleDarkMode()" aria-label="تغییر حالت نمایش">◐</button><a href="/app" class="top-cta">ورود به مرکز فرمان</a></div>
+</header>
+<main class="page-shell">{% block content %}{% endblock %}</main>
+<footer class="site-footer"><span>AI-Agent-Manager</span><span>Autonomous Agentic Development Platform</span><span>v1.0</span></footer>
+<div id="toast-container"></div>
+<script src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script>
+function toggleDarkMode(){document.documentElement.classList.toggle('light');localStorage.setItem('lightMode',document.documentElement.classList.contains('light'));}
+if(localStorage.getItem('lightMode')==='true')document.documentElement.classList.add('light');
+function showToast(message,type='info'){const t=document.createElement('div');t.className='toast '+type;t.textContent=message;document.getElementById('toast-container').appendChild(t);setTimeout(()=>t.remove(),3200);}
+</script>
+{% block scripts %}{% endblock %}
+</body></html>

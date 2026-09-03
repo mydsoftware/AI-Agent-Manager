@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}هسته مرکزی هوش مصنوعی | AI-Agent-Manager{% endblock %}
+{% block content %}
+<section class="hero-shell">
+  <div class="hero-copy">
+    <div class="eyebrow">AI FACTORY · AUTONOMOUS DEVELOPMENT</div>
+    <h1>از ایده تا اجرا؛<br><span>هوش مصنوعی، پروژه را برایت می‌سازد.</span></h1>
+    <p>یک مرکز فرمان واحد برای مدیریت Agentها، ساخت پروژه، کدنویسی، تست، GitHub، Vercel و چرخه توسعه خودکار.</p>
+    <div class="hero-actions"><a href="/app" class="btn-primary">شروع ساخت پروژه ↗</a><a href="#how" class="btn-ghost">نحوه کار را ببین</a></div>
+    <div class="trust-row"><span>✓ مدل‌های رایگان</span><span>✓ Agentic Loop</span><span>✓ GitHub + Vercel</span></div>
+  </div>
+  <div class="hero-orbit glass-panel"><div class="orbit-core"><span>✦</span><b>MANAGER</b><small>Orchestrator</small></div><div class="orbit-node n1">Planner</div><div class="orbit-node n2">Coder</div><div class="orbit-node n3">QA</div><div class="orbit-node n4">Deploy</div><div class="orbit-ring"></div></div>
+</section>
+
+<section class="section-block" id="how"><div class="section-heading"><span class="eyebrow">AI FACTORY PIPELINE</span><h2>یک ایده، یک چرخه کامل اجرا</h2><p>Manager درخواست را تحلیل می‌کند و بهترین Agentها و Workflow را برای رسیدن به خروجی نهایی انتخاب می‌کند.</p></div>
+<div class="factory-flow">{% for item in [('01','Idea','ایده شما'),('02','Plan','برنامه‌ریزی'),('03','Route','انتخاب Agent'),('04','Build','ساخت'),('05','Test','تست'),('06','Deploy','انتشار')] %}<div class="flow-card"><strong>{{ item[0] }}</strong><b>{{ item[1] }}</b><small>{{ item[2] }}</small></div>{% endfor %}</div></section>
+
+<section class="section-block"><div class="section-heading"><span class="eyebrow">PLATFORM</span><h2>تمام ابزارها در یک Workspace</h2></div><div class="feature-grid"><div class="feature-card"><span>◈</span><b>Command Center</b><p>با زبان طبیعی پروژه را تعریف و اجرای Manager را کنترل کن.</p></div><div class="feature-card"><span>⌘</span><b>Agent Runtime</b><p>Agentها، Toolها، Memory و Workflow در یک Runtime هماهنگ می‌شوند.</p></div><div class="feature-card"><span>◇</span><b>Autonomous Loop</b><p>Build → Test → Fix → Deploy تا رسیدن به نتیجه یا سقف تلاش.</p></div><div class="feature-card"><span>↗</span><b>GitHub + Vercel</b><p>کد، Commit، CI، Preview، QA مرورگر و انتشار در یک مسیر.</p></div></div></section>
+
+<section class="cta-panel glass-panel"><div><span class="eyebrow">READY TO BUILD?</span><h2>پروژه بعدی‌ات را همین حالا شروع کن.</h2><p>ایده را بنویس؛ بقیه مسیر را به هسته مرکزی بسپار.</p></div><a href="/app" class="btn-primary">ورود به Command Center ↗</a></section>
+{% endblock %}
