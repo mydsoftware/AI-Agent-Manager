@@ -73,7 +73,12 @@ def audit_page():
 
 @app.route("/projects")
 def projects_page():
-    return render_template("projects.html")
+    return render_template("projects.html", agents=AGENTS)
+
+
+@app.route("/projects/workspace")
+def project_workspace():
+    return render_template("project_workspace.html", agents=AGENTS)
 
 
 @app.route("/api/execute", methods=["POST"])
