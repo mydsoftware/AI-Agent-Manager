@@ -107,22 +107,23 @@ def create_app(
 
     @app.post("/api/project/<project_id>/run")
     def run_project(project_id: str):
-        """درخواست اصلی پروژه را از مسیر Manager Runtime اجرا می‌کند."""
+        """پروژه را از مسیر Workflow پویا و Manager Runtime اجرا می‌کند."""
         project = projects.get(project_id)
         if project is None:
             return jsonify({"error": "پروژه پیدا نشد."}), 404
 
         payload = request.get_json(silent=True) or {}
         project_request = str(payload.get("request", "")).strip() or str(project["request"]).strip()
-        agent = str(payload.get("agent", "developer")).strip() or "developer"
+        agent = str(payload.get("agent", "")).strip() or None
         if not project_request:
             return jsonify({"error": "درخواست پروژه خالی است."}), 400
 
         try:
-            projects.set_status(project_id, "running")
-            report = manager_runtime.run(project_request, agent)
-            projects.set_status(project_id, "completed")
-            return jsonify({"project": projects.get(project_id), "report": report.to_dict()})
+            projects.set_status(project_id, "planning")
+            execution = workflow.execute(project_request, agent)
+            report = execution["report"]
+            projects.set_status(project_id, "completed" if report.get("status") in {"success", "completed"} else "failed")
+            return jsonify({"project": projects.get(project_id), "workflow": execution["workflow"], "report": report})
         except Exception as error:
             projects.set_status(project_id, "failed")
             return jsonify({"error": "اجرای پروژه ناموفق بود.", "detail": str(error)}), 500
