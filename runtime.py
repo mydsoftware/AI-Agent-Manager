@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from agents.custom_agent import build_custom_agent
 from agents.registry import create_default_registry
 from agents.registry_manager import AgentRegistryManager
 from agents.registry_store import AgentRegistryStore
@@ -13,6 +14,7 @@ from manager.persistent_memory import PersistentMemory
 from manager.report import ManagerReport
 from manager.router import Router
 from manager.task import Task
+from services.agent_store import AgentStore
 
 
 class ManagerRuntime:
@@ -22,6 +24,9 @@ class ManagerRuntime:
         self.registry = create_default_registry()
         self.registry_manager = AgentRegistryManager(self.registry)
         self.registry_store = AgentRegistryStore(registry_path)
+        self.agent_store = AgentStore(database_path)
+        self._load_custom_agents()
+        self.registry_store.load(self.registry_manager)
         self.agent_team = AgentTeam(self.registry_manager, self.registry_store)
         self.governance = AgentGovernance(self.registry_manager)
         self.router = Router(self.registry, self.governance)
@@ -30,6 +35,36 @@ class ManagerRuntime:
         self.loop = AgenticLoop(self.router, self.memory)
         self.executor = TaskExecutor(self.loop)
         self.orchestrator = ManagerOrchestrator(memory=self.memory)
+
+    def _load_custom_agents(self) -> None:
+        """ایجنت‌های سفارشی ذخیره‌شده را بدون اجرای کد دلخواه ثبت می‌کند."""
+        for record in self.agent_store.list():
+            agent_class = build_custom_agent(
+                str(record["name"]),
+                str(record["description"]),
+                str(record["system_prompt"]),
+                [item for item in str(record["capabilities"]).split(",") if item],
+            )
+            self.registry_manager.register(agent_class, str(record["description"]))
+            if not bool(record["enabled"]):
+                self.registry_manager.disable(str(record["name"]))
+
+    def create_custom_agent(self, name: str, description: str, system_prompt: str, capabilities: list[str]) -> dict[str, object]:
+        """یک ایجنت سفارشی داده‌محور ایجاد و در Runtime ثبت می‌کند."""
+        record = self.agent_store.create(name, description, system_prompt, capabilities)
+        agent_class = build_custom_agent(name=str(record["name"]), description=description,
+                                         system_prompt=system_prompt, capabilities=capabilities)
+        self.registry_manager.register(agent_class, description)
+        self.registry_store.save(self.registry_manager)
+        return record
+
+    def delete_custom_agent(self, name: str) -> bool:
+        """ایجنت سفارشی را از ذخیره‌ساز و Registry حذف می‌کند."""
+        deleted = self.agent_store.delete(name)
+        if deleted and self.registry_manager.registry.has(name):
+            self.registry_manager.remove(name)
+            self.registry_store.save(self.registry_manager)
+        return deleted
 
     def run(self, request: str, agent: str = "developer") -> ManagerReport:
         """درخواست کاربر را از تحلیل نیت تا گزارش نهایی اجرا می‌کند."""
