@@ -7,8 +7,8 @@ from flask import Flask, render_template, request, jsonify
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
-API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
-API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "test-key-for-development")
+API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "")
 
 AGENTS = {
     "developer": {"name": "توسعه‌دهنده", "icon": "💻", "desc": "بررسی و توسعه کد"},
@@ -25,9 +25,9 @@ AGENTS = {
 
 
 def api_call(endpoint: str, method: str = "GET", data: dict | None = None) -> dict:
-    """فراخوانی API مرکزی."""
+    """فراخوانی امن API مرکزی."""
     headers = {"Content-Type": "application/json"}
-    if API_KEY and API_KEY != "test-key-for-development":
+    if API_KEY:
         headers["X-API-Key"] = API_KEY
     try:
         if method == "GET":
@@ -43,7 +43,10 @@ def api_call(endpoint: str, method: str = "GET", data: dict | None = None) -> di
 
 
 @app.after_request
-def add_cors_headers(response):
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, X-Execution-ID"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
@@ -57,8 +60,7 @@ def landing():
 
 @app.route("/app")
 def command_center():
-    health = api_call("/api/health")
-    return render_template("dashboard.html", agents=AGENTS, health=health, api_base=API_BASE)
+    return render_template("dashboard.html", agents=AGENTS, health=api_call("/api/health"), api_base=API_BASE)
 
 
 @app.route("/execute")
@@ -88,28 +90,7 @@ def api_execute():
     agent = str(data.get("agent", "developer")).strip() or "developer"
     if not request_text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-    return jsonify(api_call("/api/run", "POST", {"request": request_text, "agent": agent}))
-
-
-@app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
-def api_proxy(endpoint):
-    if request.method == "GET":
-        result = api_call(f"/{endpoint}")
-    else:
-        result = api_call(f"/{endpoint}", "POST", request.get_json(silent=True) or {})
-    return jsonify(result)
-
-
-@app.route("/api/audit", methods=["POST"])
-def api_audit():
-    data = request.get_json(silent=True) or {}
-    url = str(data.get("url", "")).strip()
-    if not url:
-        return jsonify({"error": "URL الزامی است"}), 400
-    result = api_call("/api/run", "POST", {
-        "request": f"ممیزی سایت {url}",
-        "agent": "website-audit",
-    })
+    result = api_call("/api/run", "POST", {"request": request_text, "agent": agent})
     return jsonify(result)
 
 
@@ -119,13 +100,37 @@ def api_route():
     request_text = str(data.get("request", "")).strip()
     if not request_text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-    result = api_call("/api/route", "POST", {"request": request_text})
-    return jsonify(result)
+    return jsonify(api_call("/api/route", "POST", {"request": request_text}))
+
+
+@app.route("/api/projects", methods=["GET"])
+def api_projects():
+    return jsonify(api_call("/api/projects"))
 
 
 @app.route("/api/project/create", methods=["POST"])
 def api_project_create():
     return jsonify(api_call("/api/project/create", "POST", request.get_json(silent=True) or {}))
+
+
+@app.route("/api/project/<project_id>")
+def api_project(project_id: str):
+    return jsonify(api_call(f"/api/project/{project_id}"))
+
+
+@app.route("/api/audit", methods=["POST"])
+def api_audit():
+    data = request.get_json(silent=True) or {}
+    url = str(data.get("url", "")).strip()
+    if not url:
+        return jsonify({"error": "URL الزامی است"}), 400
+    return jsonify(api_call("/api/run", "POST", {"request": f"ممیزی سایت {url}", "agent": "website-audit"}))
+
+
+@app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
+def api_proxy(endpoint):
+    payload = request.get_json(silent=True) or {}
+    return jsonify(api_call(f"/{endpoint}", request.method, payload if request.method == "POST" else None))
 
 
 @app.route("/api/session/start", methods=["POST"])
