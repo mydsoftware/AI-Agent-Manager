@@ -30,10 +30,7 @@ def api_call(endpoint: str, method: str = "GET", data: dict | None = None) -> di
     if API_KEY:
         headers["X-API-Key"] = API_KEY
     try:
-        if method == "GET":
-            response = requests.get(f"{API_BASE}{endpoint}", headers=headers, timeout=30)
-        else:
-            response = requests.post(f"{API_BASE}{endpoint}", headers=headers, json=data, timeout=30)
+        response = requests.request(method, f"{API_BASE}{endpoint}", headers=headers, json=data, timeout=30)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as exc:
@@ -49,7 +46,7 @@ def add_security_headers(response):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, X-Execution-ID"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
     return response
 
 
@@ -61,6 +58,11 @@ def landing():
 @app.route("/app")
 def command_center():
     return render_template("dashboard.html", agents=AGENTS, health=api_call("/api/health"), api_base=API_BASE)
+
+
+@app.route("/agents")
+def agents_page():
+    return render_template("agents.html", agents=AGENTS)
 
 
 @app.route("/execute")
@@ -103,6 +105,21 @@ def api_route():
     return jsonify(api_call("/api/route", "POST", {"request": request_text}))
 
 
+@app.route("/api/agents/custom", methods=["GET"])
+def api_custom_agents():
+    return jsonify(api_call("/api/agents/custom"))
+
+
+@app.route("/api/agents/create", methods=["POST"])
+def api_agent_create():
+    return jsonify(api_call("/api/agents/create", "POST", request.get_json(silent=True) or {}))
+
+
+@app.route("/api/agents/custom/<name>", methods=["DELETE"])
+def api_agent_delete(name: str):
+    return jsonify(api_call(f"/api/agents/custom/{name}", "DELETE"))
+
+
 @app.route("/api/projects", methods=["GET"])
 def api_projects():
     return jsonify(api_call("/api/projects"))
@@ -127,10 +144,10 @@ def api_audit():
     return jsonify(api_call("/api/run", "POST", {"request": f"ممیزی سایت {url}", "agent": "website-audit"}))
 
 
-@app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
+@app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST", "DELETE"])
 def api_proxy(endpoint):
     payload = request.get_json(silent=True) or {}
-    return jsonify(api_call(f"/{endpoint}", request.method, payload if request.method == "POST" else None))
+    return jsonify(api_call(f"/{endpoint}", request.method, payload if request.method != "DELETE" else None))
 
 
 @app.route("/api/session/start", methods=["POST"])
