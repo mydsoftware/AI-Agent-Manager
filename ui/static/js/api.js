@@ -29,8 +29,17 @@ const API = {
         });
     },
     async route(request) { return this.call('/route', 'POST', { request }); },
+    async planWorkflow(request, agent = '') {
+        return this.call('/workflow/plan', 'POST', { request, agent });
+    },
+    async runWorkflow(request, agent = '') {
+        return this.call('/workflow/run', 'POST', { request, agent });
+    },
     async createProject(project) { return this.call('/project/create', 'POST', project); },
     async getProject(projectId) { return this.call(`/project/${encodeURIComponent(projectId)}`); },
+    async planProjectWorkflow(projectId) {
+        return this.call(`/project/${encodeURIComponent(projectId)}/workflow/plan`, 'POST', {});
+    },
     async runProject(projectId, request = '', agent = 'developer') {
         return this.call(`/project/${encodeURIComponent(projectId)}/run`, 'POST', { request, agent });
     },
