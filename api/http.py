@@ -5,6 +5,7 @@ from flask import Flask, jsonify, request
 from api.agent_team_api import AgentTeamAPI
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from manager.request_router import route_request
+from manager.workflow_engine import WorkflowEngine
 from services.project_store import ProjectStore
 from runtime import ManagerRuntime
 
@@ -20,6 +21,7 @@ def create_app(
     manager_runtime = runtime or ManagerRuntime()
     connection_api = wordpress_connection_api or WordPressConnectionHttpApi()
     projects = project_store or ProjectStore()
+    workflow = WorkflowEngine(manager_runtime)
 
     @app.get("/api/agents")
     def list_agents():
@@ -50,6 +52,30 @@ def create_app(
         if not request_text:
             return jsonify({"error": "فیلد request الزامی است."}), 400
         return jsonify(route_request(request_text).__dict__)
+
+    @app.post("/api/workflow/plan")
+    def plan_workflow():
+        payload = request.get_json(silent=True) or {}
+        request_text = str(payload.get("request", "")).strip()
+        agent = str(payload.get("agent", "")).strip() or None
+        if not request_text:
+            return jsonify({"error": "فیلد request الزامی است."}), 400
+        try:
+            return jsonify(workflow.plan(request_text, agent).to_dict())
+        except (KeyError, PermissionError, ValueError) as error:
+            return jsonify({"error": str(error)}), 400
+
+    @app.post("/api/workflow/run")
+    def run_workflow():
+        payload = request.get_json(silent=True) or {}
+        request_text = str(payload.get("request", "")).strip()
+        agent = str(payload.get("agent", "")).strip() or None
+        if not request_text:
+            return jsonify({"error": "فیلد request الزامی است."}), 400
+        try:
+            return jsonify(workflow.execute(request_text, agent))
+        except (KeyError, PermissionError, ValueError) as error:
+            return jsonify({"error": str(error)}), 400
 
     @app.get("/api/projects")
     def list_projects():
@@ -101,6 +127,16 @@ def create_app(
             projects.set_status(project_id, "failed")
             return jsonify({"error": "اجرای پروژه ناموفق بود.", "detail": str(error)}), 500
 
+    @app.post("/api/project/<project_id>/workflow/plan")
+    def project_workflow_plan(project_id: str):
+        project = projects.get(project_id)
+        if project is None:
+            return jsonify({"error": "پروژه پیدا نشد."}), 404
+        try:
+            return jsonify(workflow.plan(project["request"]).to_dict())
+        except (KeyError, PermissionError, ValueError) as error:
+            return jsonify({"error": str(error)}), 400
+
     @app.post("/api/project/<project_id>/status")
     def update_project_status(project_id: str):
         payload = request.get_json(silent=True) or {}
@@ -130,6 +166,7 @@ def create_app(
             "service": "ai-agent-manager",
             "runtime": "ready",
             "projects": "ready",
+            "workflow": "ready",
         })
 
     return app
