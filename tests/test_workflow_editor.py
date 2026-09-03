@@ -42,3 +42,14 @@ def test_workflow_editor_rejects_bad_dependency(tmp_path):
         {"id":"t1","title":"A","agent":"developer","depends_on":["missing"]}
     ]})
     assert response.status_code == 400
+
+
+def test_workflow_editor_rejects_cycle(tmp_path):
+    app, projects = make_app(tmp_path)
+    project = projects.create(name="Demo", description="demo", request="build website")
+    response = app.test_client().put(f"/api/project/{project['id']}/workflow", json={"tasks":[
+        {"id":"t1","title":"A","agent":"developer","depends_on":["t2"]},
+        {"id":"t2","title":"B","agent":"qa","depends_on":["t1"]}
+    ]})
+    assert response.status_code == 400
+    assert "چرخه" in response.get_json()["error"]
