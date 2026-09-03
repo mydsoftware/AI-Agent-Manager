@@ -26,6 +26,36 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
     @app.get("/api/agents")
     def list_agents(): return jsonify(team_api.list_agents())
 
+    @app.post("/api/agents/create")
+    def create_agent():
+        payload = request.get_json(silent=True) or {}
+        name = str(payload.get("name", "")).strip()
+        description = str(payload.get("description", "")).strip()
+        system_prompt = str(payload.get("system_prompt", "")).strip()
+        capabilities = payload.get("capabilities", [])
+        if not name or not description or not system_prompt:
+            return jsonify({"error": "name، description و system_prompt الزامی هستند."}), 400
+        if not isinstance(capabilities, list):
+            return jsonify({"error": "capabilities باید آرایه باشد."}), 400
+        capabilities = [str(item).strip() for item in capabilities if str(item).strip()]
+        if len(name) > 80 or len(description) > 500 or len(system_prompt) > 12000:
+            return jsonify({"error": "طول یکی از فیلدها بیش از حد مجاز است."}), 400
+        try:
+            record = manager_runtime.create_custom_agent(name, description, system_prompt, capabilities)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        return jsonify(record), 201
+
+    @app.get("/api/agents/custom")
+    def list_custom_agents(): return jsonify(manager_runtime.agent_store.list())
+
+    @app.delete("/api/agents/custom/<name>")
+    def delete_custom_agent(name: str):
+        if name in {"developer", "research", "qa", "security", "github", "github-project", "website-audit-runner"}:
+            return jsonify({"error": "ایجنت‌های هسته قابل حذف نیستند."}), 400
+        return (jsonify({"deleted": True, "name": name}) if manager_runtime.delete_custom_agent(name)
+                else (jsonify({"error": "ایجنت سفارشی پیدا نشد."}), 404))
+
     @app.post("/api/agents/<name>/enable")
     def enable_agent(name: str): return jsonify(team_api.enable(name))
 
@@ -155,6 +185,6 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
 
     @app.get("/api/health")
     def health():
-        return jsonify({"status": "ok", "service": "ai-agent-manager", "runtime": "ready", "projects": "ready", "workflow": "ready", "activity": "ready", "approvals": "ready"})
+        return jsonify({"status": "ok", "service": "ai-agent-manager", "runtime": "ready", "projects": "ready", "workflow": "ready", "activity": "ready", "approvals": "ready", "agent_builder": "ready"})
 
     return app
