@@ -4,6 +4,7 @@ from flask import Flask, jsonify, request
 
 from api.agent_team_api import AgentTeamAPI
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
+from manager.request_router import route_request
 from runtime import ManagerRuntime
 
 
@@ -38,6 +39,14 @@ def create_app(
             return jsonify({"error": "فیلد request الزامی است."}), 400
         report = manager_runtime.run(request_text, agent)
         return jsonify(report.to_dict())
+
+    @app.post("/api/route")
+    def route_request_api():
+        payload = request.get_json(silent=True) or {}
+        request_text = str(payload.get("request", "")).strip()
+        if not request_text:
+            return jsonify({"error": "فیلد request الزامی است."}), 400
+        return jsonify(route_request(request_text).__dict__)
 
     @app.post("/api/wordpress/connection/check")
     def wordpress_connection_check():
