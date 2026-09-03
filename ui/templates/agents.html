@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Agent Builder — هسته مرکزی هوش مصنوعی{% endblock %}
+{% block content %}
+<div class="page-shell">
+  <section class="hero-card">
+    <div>
+      <span class="eyebrow">AGENT BUILDER</span>
+      <h1>ایجنت اختصاصی خودت را بساز</h1>
+      <p>بدون نوشتن کد، نقش، دستورالعمل و قابلیت‌های ایجنت را تعریف کن. ایجنت به‌صورت داده‌ای ذخیره می‌شود و وارد هسته اجرایی می‌شود.</p>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:20px">
+    <div class="section-head"><h2>ساخت Agent</h2><span class="muted">Safe / Declarative</span></div>
+    <form id="agent-form" class="stack">
+      <label>نام فنی<input id="agent-name" required maxlength="80" placeholder="مثلاً seo-specialist"></label>
+      <label>توضیح<input id="agent-description" required maxlength="500" placeholder="متخصص سئو و تحلیل سایت"></label>
+      <label>System Prompt<textarea id="agent-prompt" required maxlength="12000" rows="7" placeholder="نقش و قوانین ایجنت را مشخص کن..."></textarea></label>
+      <label>قابلیت‌ها <input id="agent-capabilities" placeholder="research, analysis, seo"></label>
+      <button class="primary" type="submit">ساخت و فعال‌سازی Agent</button>
+      <div id="agent-message" class="muted"></div>
+    </form>
+  </section>
+
+  <section class="card" style="margin-top:20px">
+    <div class="section-head"><h2>Agentهای سفارشی</h2><button class="secondary" onclick="loadAgents()">به‌روزرسانی</button></div>
+    <div id="agent-list" class="grid"></div>
+  </section>
+</div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+async function loadAgents(){
+  const r = await fetch('/api/agents/custom'); const data = await r.json();
+  const root = document.getElementById('agent-list');
+  if (!Array.isArray(data) || !data.length) { root.innerHTML = '<p class="muted">هنوز Agent سفارشی ساخته نشده است.</p>'; return; }
+  root.innerHTML = data.map(a => `<article class="card"><h3>${esc(a.name)}</h3><p>${esc(a.description)}</p><small>${esc(a.capabilities || 'بدون قابلیت ثبت‌شده')}</small><div style="margin-top:14px"><button class="danger" onclick="removeAgent('${esc(a.name)}')">حذف</button></div></article>`).join('');
+}
+async function removeAgent(name){
+  if(!confirm('این Agent حذف شود؟')) return;
+  const r = await fetch('/api/agents/custom/' + encodeURIComponent(name), {method:'DELETE'});
+  const d = await r.json(); document.getElementById('agent-message').textContent = d.error || 'Agent حذف شد.'; loadAgents();
+}
+document.getElementById('agent-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const payload = {name:document.getElementById('agent-name').value, description:document.getElementById('agent-description').value, system_prompt:document.getElementById('agent-prompt').value, capabilities:document.getElementById('agent-capabilities').value.split(',').map(x=>x.trim()).filter(Boolean)};
+  const r = await fetch('/api/agents/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const d = await r.json(); document.getElementById('agent-message').textContent = d.error || 'Agent با موفقیت ساخته شد.';
+  if(r.ok){ e.target.reset(); loadAgents(); }
+});
+loadAgents();
+</script>
+{% endblock %}
