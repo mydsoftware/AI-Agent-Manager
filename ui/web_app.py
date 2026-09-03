@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
-API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
+API_BASE = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 API_KEY = os.getenv("AI_AGENT_MANAGER_API_KEY", "test-key-for-development")
 
 AGENTS = {
@@ -57,7 +57,7 @@ def landing():
 
 @app.route("/app")
 def command_center():
-    health = api_call("/health")
+    health = api_call("/api/health")
     return render_template("dashboard.html", agents=AGENTS, health=health, api_base=API_BASE)
 
 
@@ -84,11 +84,11 @@ def project_workspace():
 @app.route("/api/execute", methods=["POST"])
 def api_execute():
     data = request.get_json(silent=True) or {}
-    request_text = data.get("request", "").strip()
-    agent = data.get("agent", "developer")
+    request_text = str(data.get("request", "")).strip()
+    agent = str(data.get("agent", "developer")).strip() or "developer"
     if not request_text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-    return jsonify(api_call("/execute", "POST", {"request": request_text, "agent": agent}))
+    return jsonify(api_call("/api/run", "POST", {"request": request_text, "agent": agent}))
 
 
 @app.route("/api/proxy/<path:endpoint>", methods=["GET", "POST"])
@@ -103,15 +103,12 @@ def api_proxy(endpoint):
 @app.route("/api/audit", methods=["POST"])
 def api_audit():
     data = request.get_json(silent=True) or {}
-    url = data.get("url", "").strip()
-    mode = data.get("mode", "pre_contract")
+    url = str(data.get("url", "")).strip()
     if not url:
         return jsonify({"error": "URL الزامی است"}), 400
-    result = api_call("/execute/website-audit", "POST", {
-        "request_id": f"exec-{hash(url) % 10000}",
-        "url": url,
-        "mode": mode,
-        "language": "fa",
+    result = api_call("/api/run", "POST", {
+        "request": f"ممیزی سایت {url}",
+        "agent": "website-audit",
     })
     return jsonify(result)
 
@@ -119,30 +116,31 @@ def api_audit():
 @app.route("/api/route", methods=["POST"])
 def api_route():
     data = request.get_json(silent=True) or {}
-    request_text = data.get("request", "").strip()
+    request_text = str(data.get("request", "")).strip()
     if not request_text:
         return jsonify({"error": "درخواست نمی‌تواند خالی باشد"}), 400
-    return jsonify(api_call("/route", "POST", {"request": request_text}))
+    result = api_call("/api/route", "POST", {"request": request_text})
+    return jsonify(result)
 
 
 @app.route("/api/project/create", methods=["POST"])
 def api_project_create():
-    return jsonify(api_call("/project/create", "POST", request.get_json(silent=True) or {}))
+    return jsonify(api_call("/api/project/create", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/session/start", methods=["POST"])
 def api_session_start():
-    return jsonify(api_call("/session/start", "POST", request.get_json(silent=True) or {}))
+    return jsonify(api_call("/api/session/start", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/session/answer", methods=["POST"])
 def api_session_answer():
-    return jsonify(api_call("/session/answer", "POST", request.get_json(silent=True) or {}))
+    return jsonify(api_call("/api/session/answer", "POST", request.get_json(silent=True) or {}))
 
 
 @app.route("/api/executions/<execution_id>")
 def api_executions(execution_id):
-    return jsonify(api_call(f"/executions/{execution_id}"))
+    return jsonify(api_call(f"/api/executions/{execution_id}"))
 
 
 if __name__ == "__main__":
