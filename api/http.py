@@ -79,6 +79,42 @@ def create_app(
             return jsonify({"error": "پروژه پیدا نشد."}), 404
         return jsonify(project)
 
+    @app.post("/api/project/<project_id>/run")
+    def run_project(project_id: str):
+        """درخواست اصلی پروژه را از مسیر Manager Runtime اجرا می‌کند."""
+        project = projects.get(project_id)
+        if project is None:
+            return jsonify({"error": "پروژه پیدا نشد."}), 404
+
+        payload = request.get_json(silent=True) or {}
+        project_request = str(payload.get("request", "")).strip() or str(project["request"]).strip()
+        agent = str(payload.get("agent", "developer")).strip() or "developer"
+        if not project_request:
+            return jsonify({"error": "درخواست پروژه خالی است."}), 400
+
+        try:
+            projects.set_status(project_id, "running")
+            report = manager_runtime.run(project_request, agent)
+            projects.set_status(project_id, "completed")
+            return jsonify({"project": projects.get(project_id), "report": report.to_dict()})
+        except Exception as error:
+            projects.set_status(project_id, "failed")
+            return jsonify({"error": "اجرای پروژه ناموفق بود.", "detail": str(error)}), 500
+
+    @app.post("/api/project/<project_id>/status")
+    def update_project_status(project_id: str):
+        payload = request.get_json(silent=True) or {}
+        status = str(payload.get("status", "")).strip()
+        if not status:
+            return jsonify({"error": "فیلد status الزامی است."}), 400
+        try:
+            project = projects.set_status(project_id, status)
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        if project is None:
+            return jsonify({"error": "پروژه پیدا نشد."}), 404
+        return jsonify(project)
+
     @app.post("/api/wordpress/connection/check")
     def wordpress_connection_check():
         payload = request.get_json(silent=True)
@@ -89,6 +125,11 @@ def create_app(
 
     @app.get("/api/health")
     def health():
-        return jsonify({"status": "ok"})
+        return jsonify({
+            "status": "ok",
+            "service": "ai-agent-manager",
+            "runtime": "ready",
+            "projects": "ready",
+        })
 
     return app
