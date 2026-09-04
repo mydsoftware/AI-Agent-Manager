@@ -39,7 +39,10 @@ class TaskExecutor:
                 if any(dep.status != TaskStatus.SUCCESS for dep in dependencies):
                     continue
 
-                while True:
+                attempts = 0
+                while attempts <= task.max_attempts:
+                    attempts += 1
+                    task.attempts = attempts
                     task.start()
                     try:
                         result = self.loop.run([task])[0]
@@ -48,11 +51,10 @@ class TaskExecutor:
                         break
                     except Exception as error:
                         task.error = str(error)
-                        if task.can_retry():
+                        if attempts <= task.max_attempts:
                             task.status = TaskStatus.RETRYING
                             continue
                         task.fail(str(error))
-                        break
                 del remaining[task_id]
                 progress = True
 
