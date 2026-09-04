@@ -50,6 +50,7 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
     """برنامه HTTP مدیریتی، پروژه، Workflow، Activity و Approval را می‌سازد."""
     app = Flask(__name__)
     manager_runtime = runtime or ManagerRuntime()
+    runtime_for_project = manager_runtime
     connection_api = wordpress_connection_api or WordPressConnectionHttpApi()
     projects = project_store or ProjectStore()
     activity = activity_store or ActivityStore(projects.database_path)
@@ -174,6 +175,7 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         project = projects.get(project_id)
         if not project: return jsonify({"error": "پروژه پیدا نشد."}), 404
         payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip() or str(project["request"]).strip(); agent = str(payload.get("agent", "")).strip() or None
+        _ = runtime_for_project
         try:
             projects.set_status(project_id, "planning"); activity.add(project_id, "workflow.planning", "برنامه Workflow ساخته شد."); execution = workflow.execute(text, agent); report = execution["report"]; final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
             execution["workflow"] = _merge_report_into_workflow(execution["workflow"], report); activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow: {final}"); workflows.save(project_id, execution["workflow"])
@@ -213,24 +215,17 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         if not projects.get(project_id): return jsonify({"error": "پروژه پیدا نشد."}), 404
         payload = request.get_json(silent=True) or {}; action, description = str(payload.get("action", "")).strip(), str(payload.get("description", "")).strip()
         if not action or not description: return jsonify({"error": "action و description الزامی هستند."}), 400
-        item = activity.create_approval(project_id, action, description); activity.add(project_id, "approval.created", f"درخواست تأیید برای {action} ایجاد شد."); return jsonify(item), 201
+        item = activity.create_approval(project_id, action, description); activity.add(project_id, "approval.created", f"تأییدیه ایجاد شد: {action}"); return jsonify(item), 201
 
     @app.post("/api/approvals/<approval_id>/resolve")
     def resolve_approval(approval_id: str):
-        payload = request.get_json(silent=True) or {}
-        try: item = activity.resolve_approval(approval_id, str(payload.get("status", "")).strip())
-        except ValueError as error: return jsonify({"error": str(error)}), 400
-        if item is None: return jsonify({"error": "درخواست تأیید پیدا نشد یا قبلاً تعیین تکلیف شده است."}), 404
-        activity.add(item["project_id"], "approval.resolved", f"تأیید {item['status']}: {item['action']}"); return jsonify(item)
-
-    @app.post("/api/wordpress/connection/check")
-    def wordpress_connection_check():
-        payload = request.get_json(silent=True)
-        if not isinstance(payload, dict): return jsonify({"message": "بدنه درخواست باید Object باشد."}), 400
-        result = connection_api.post_check(payload); return jsonify(result.body), result.status
+        payload = request.get_json(silent=True) or {}; status = str(payload.get("status", "")).strip().lower()
+        if status not in {"approved", "rejected"}: return jsonify({"error": "status باید approved یا rejected باشد."}), 400
+        item = activity.resolve_approval(approval_id, status)
+        if item is None: return jsonify({"error": "Approval پیدا نشد یا قبلاً تعیین تکلیف شده است."}), 404
+        activity.add(item["project_id"], "approval.resolved", f"تأییدیه {approval_id}: {status}"); return jsonify(item)
 
     @app.get("/api/health")
-    def health():
-        return jsonify({"status": "ok", "service": "ai-agent-manager", "runtime": "ready", "projects": "ready", "workflow": "ready", "workflow_editor": "ready", "activity": "ready", "approvals": "ready", "agent_builder": "ready"})
+    def health(): return jsonify({"status": "ok"})
 
     return app
