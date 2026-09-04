@@ -1,0 +1,35 @@
+name: Fix Core Failures
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/fix_core_failures.py"
+      - "manager/executor.py"
+      - "manager/intention.py"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: دریافت مخزن
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: اجرای اصلاحات
+        run: python scripts/fix_core_failures.py
+      - name: ثبت و ارسال اصلاحات
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git add manager/executor.py manager/intention.py
+          git commit -m "fix: resolve planner selection and executor retry failures"
+          git push origin main
