@@ -54,8 +54,10 @@ class WorkflowEngine:
 
         intent = self.intent_parser.parse(text)
         decision = self.decision_engine.decide(intent)
-        selected = agent.strip() if agent and agent.strip() else decision.agent
         tasks = self.planner.plan(intent).tasks
+        selected = agent.strip() if agent and agent.strip() else decision.agent
+        if not agent and any(task.agent == "developer" for task in tasks):
+            selected = "developer"
         if agent:
             if not self.runtime.governance.can_use(selected):
                 raise PermissionError(f"ایجنت «{selected}» غیرفعال یا غیرمجاز است.")
