@@ -6,6 +6,7 @@ from api.agent_team_api import AgentTeamAPI
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from manager.request_router import route_request
 from manager.workflow_engine import WorkflowEngine
+from manager.approval_policy import sensitive_tasks
 from services.activity_store import ActivityStore
 from services.project_store import ProjectStore
 from services.workflow_store import WorkflowStore
@@ -28,6 +29,27 @@ def _has_cycle(tasks: list[dict]) -> bool:
 
     return any(visit(node) for node in graph)
 
+
+def _approval_gate(project_id: str, tasks: list, activity: ActivityStore) -> tuple[bool, dict | None]:
+    """برای Taskهای حساس، اجرای Workflow را تا تأیید کاربر متوقف می‌کند."""
+    sensitive = sensitive_tasks(tasks)
+    if not sensitive:
+        return True, None
+    approvals = activity.approvals(project_id)
+    action = "workflow.sensitive-run"
+    pending = next((item for item in approvals if item.get("action") == action and item.get("status") == "pending"), None)
+    if pending:
+        return False, {"approval_required": True, "approval": pending}
+    approved = next((item for item in approvals if item.get("action") == action and item.get("status") == "approved"), None)
+    if approved:
+        return True, None
+    approval = activity.create_approval(
+        project_id,
+        action,
+        "اجرای Workflow شامل عملیات حساس است: " + ", ".join(task.title for task in sensitive),
+    )
+    activity.add(project_id, "approval.required", "اجرای Workflow تا تأیید عملیات حساس متوقف شد.")
+    return False, {"approval_required": True, "approval": approval}
 
 def _merge_report_into_workflow(workflow_data: dict, report: dict) -> dict:
     """وضعیت واقعی اجرای Taskها را داخل Snapshot ذخیره‌شده Workflow می‌نشاند."""
@@ -161,6 +183,9 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         from manager.task import Task
         from manager.task_status import TaskStatus
         tasks = [Task(id=str(raw["id"]), title=str(raw["title"]), description=str(raw.get("description", "")), agent=str(raw["agent"]), depends_on=[str(x) for x in raw.get("depends_on", [])], status=TaskStatus.PENDING, max_attempts=int(raw.get("max_attempts", 5))) for raw in saved["workflow"].get("tasks", [])]
+        allowed, gate = _approval_gate(project_id, tasks, activity)
+        if not allowed:
+            return jsonify(gate), 409
         projects.set_status(project_id, "running"); activity.add(project_id, "workflow.running", "Workflow ویرایش‌شده در حال اجراست.")
         try:
             report = manager_runtime.run_tasks(tasks); report_data = report.to_dict(); final = "completed" if report_data.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
@@ -177,7 +202,10 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip() or str(project["request"]).strip(); agent = str(payload.get("agent", "")).strip() or None
         _ = runtime_for_project
         try:
-            projects.set_status(project_id, "planning"); activity.add(project_id, "workflow.planning", "برنامه Workflow ساخته شد."); execution = workflow.execute(text, agent); report = execution["report"]; final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
+            projects.set_status(project_id, "planning"); activity.add(project_id, "workflow.planning", "برنامه Workflow ساخته شد."); plan = workflow.plan(text, agent); gate_tasks = plan.tasks; allowed, gate = _approval_gate(project_id, gate_tasks, activity)
+            if not allowed:
+                projects.set_status(project_id, "paused"); return jsonify(gate), 409
+            execution = workflow.execute(text, agent); report = execution["report"]; final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
             execution["workflow"] = _merge_report_into_workflow(execution["workflow"], report); activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow: {final}"); workflows.save(project_id, execution["workflow"])
             return jsonify({"project": projects.get(project_id), "workflow": execution["workflow"], "report": report})
         except Exception as error:
