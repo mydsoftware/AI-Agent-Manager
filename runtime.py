@@ -14,6 +14,7 @@ from manager.persistent_memory import PersistentMemory
 from manager.report import ManagerReport
 from manager.router import Router
 from manager.task import Task
+from services.agent_deployment_adapter import AgentDeploymentAdapter
 from services.agent_store import AgentStore
 
 
@@ -34,6 +35,7 @@ class ManagerRuntime:
         self.persistent_memory = PersistentMemory(database_path)
         self.loop = AgenticLoop(self.router, self.memory)
         self.executor = TaskExecutor(self.loop)
+        self.deployment_adapter = AgentDeploymentAdapter.from_task_executor(self.executor)
         self.orchestrator = ManagerOrchestrator(memory=self.memory)
 
     def _load_custom_agents(self) -> None:
