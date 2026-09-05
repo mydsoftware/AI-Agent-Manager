@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from services.agent_deployment_adapter import AgentDeploymentAdapter, DeploymentContext
 
 
 class DeploymentState(str, Enum):
@@ -49,11 +52,22 @@ class AutonomousDeploymentLoop:
         browser_qa: Callable[[str], dict[str, Any]],
         analyze_failure: Callable[[dict[str, Any]], bool] | None = None,
         fix_and_commit: Callable[[dict[str, Any]], bool] | None = None,
+        deployment_adapter: "AgentDeploymentAdapter | None" = None,
+        deployment_context: "DeploymentContext | None" = None,
     ) -> DeploymentLoopResult:
+        """Loop را اجرا می‌کند و در صورت وجود Adapter، Fix را به Executor واقعی می‌سپارد."""
         history = [DeploymentState.CI_WAITING.value]
         if not ci_passed:
             history.append(DeploymentState.CI_FAILED.value)
             return DeploymentLoopResult(DeploymentState.CI_FAILED, 0, history)
+
+        if deployment_adapter is not None and deployment_context is not None:
+            def adapter_fix(qa_result: dict[str, Any]) -> bool:
+                result = deployment_adapter.execute_fix(deployment_context, qa_result)
+                return deployment_adapter.can_retry(result)
+
+            fix_and_commit = adapter_fix
+            analyze_failure = analyze_failure or (lambda _qa: True)
 
         history.append(DeploymentState.CI_PASSED.value)
         for attempt in range(1, self.max_attempts + 1):
