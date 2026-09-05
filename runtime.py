@@ -16,6 +16,11 @@ from manager.router import Router
 from manager.task import Task
 from services.agent_deployment_adapter import AgentDeploymentAdapter
 from services.agent_store import AgentStore
+from services.browser_qa import BrowserQA
+from services.ci_monitor import CIMonitor
+from services.deployment_orchestrator import DeploymentOrchestrator
+from services.github_integration import GitHubIntegration
+from services.vercel_deployment import VercelDeploymentService
 
 
 class ManagerRuntime:
@@ -35,7 +40,19 @@ class ManagerRuntime:
         self.persistent_memory = PersistentMemory(database_path)
         self.loop = AgenticLoop(self.router, self.memory)
         self.executor = TaskExecutor(self.loop)
+
+        # سرویس‌ها در Runtime ساخته می‌شوند اما تا زمان درخواست، هیچ عملیات شبکه‌ای اجرا نمی‌کنند.
+        self.github = GitHubIntegration()
+        self.ci_monitor = CIMonitor(self.github)
+        self.vercel = VercelDeploymentService()
+        self.browser_qa = BrowserQA()
         self.deployment_adapter = AgentDeploymentAdapter.from_task_executor(self.executor)
+        self.deployment_orchestrator = DeploymentOrchestrator(
+            executor=self.executor,
+            vercel=self.vercel,
+            browser_qa=self.browser_qa,
+            ci_monitor=self.ci_monitor,
+        )
         self.orchestrator = ManagerOrchestrator(memory=self.memory)
 
     def _load_custom_agents(self) -> None:
