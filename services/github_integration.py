@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-import json
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,6 @@ class GitHubIntegration:
         return f"{self.config.api_base_url}/repos/{owner}/{repository}"
 
     def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        """درخواست GitHub با خطای قابل‌مدیریت و بدون افشای Token."""
         if not path.startswith("/") or ".." in path:
             raise ValueError("مسیر GitHub نامعتبر است.")
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
@@ -75,3 +74,66 @@ class GitHubIntegration:
         if not title.strip():
             raise ValueError("title الزامی است.")
         return self.request("POST", f"/repos/{owner.strip()}/{repository.strip()}/issues", {"title": title.strip(), "body": body})
+
+    def workflow_runs(self, owner: str, repository: str, branch: str | None = None, limit: int = 10) -> dict[str, Any]:
+        """آخرین اجراهای GitHub Actions را برای Branch می‌خواند."""
+        owner, repository = owner.strip(), repository.strip()
+        if not owner or not repository:
+            raise ValueError("owner و repository الزامی هستند.")
+        limit = max(1, min(int(limit), 100))
+        query = f"?per_page={limit}"
+        if branch and branch.strip():
+            query += f"&branch={branch.strip()}"
+        return self.request("GET", f"/repos/{owner}/{repository}/actions/runs{query}")
+
+    def workflow_run(self, owner: str, repository: str, run_id: int) -> dict[str, Any]:
+        if int(run_id) < 1:
+            raise ValueError("run_id نامعتبر است.")
+        return self.request("GET", f"/repos/{owner.strip()}/{repository.strip()}/actions/runs/{int(run_id)}")
+
+    def workflow_jobs(self, owner: str, repository: str, run_id: int) -> dict[str, Any]:
+        if int(run_id) < 1:
+            raise ValueError("run_id نامعتبر است.")
+        return self.request("GET", f"/repos/{owner.strip()}/{repository.strip()}/actions/runs/{int(run_id)}/jobs")
+
+    def workflow_job_logs(self, owner: str, repository: str, job_id: int) -> str:
+        if int(job_id) < 1:
+            raise ValueError("job_id نامعتبر است.")
+        path = f"/repos/{owner.strip()}/{repository.strip()}/actions/jobs/{int(job_id)}/logs"
+        if not self.config.configured:
+            raise RuntimeError("GITHUB_TOKEN تنظیم نشده است.")
+        req = Request(self.config.api_base_url + path, method="GET", headers=self.build_headers())
+        try:
+            with urlopen(req, timeout=30) as response:
+                return response.read().decode("utf-8", errors="replace")[-20000:]
+        except HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"GitHub API خطا داد ({error.code}): {detail}") from error
+        except URLError as error:
+            raise RuntimeError("ارتباط با GitHub برقرار نشد.") from error
+
+    def ci_failure_context(self, owner: str, repository: str, run_id: int) -> dict[str, Any]:
+        """اطلاعات محدود و مناسب برای تحویل خطای CI به Agent را می‌سازد."""
+        run = self.workflow_run(owner, repository, run_id)
+        jobs = self.workflow_jobs(owner, repository, run_id)
+        failed_jobs = [
+            job for job in jobs.get("jobs", [])
+            if job.get("conclusion") == "failure"
+        ]
+        logs = []
+        for job in failed_jobs[:5]:
+            logs.append({
+                "job_id": job.get("id"),
+                "name": job.get("name", ""),
+                "conclusion": job.get("conclusion"),
+                "log": self.workflow_job_logs(owner, repository, int(job["id"])),
+            })
+        return {
+            "run_id": run.get("id"),
+            "workflow": run.get("name", ""),
+            "status": run.get("status", ""),
+            "conclusion": run.get("conclusion", ""),
+            "head_sha": run.get("head_sha", ""),
+            "head_branch": run.get("head_branch", ""),
+            "failed_jobs": logs,
+        }
