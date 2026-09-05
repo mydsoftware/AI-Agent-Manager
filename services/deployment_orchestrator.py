@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable
 
 from manager.task import Task
@@ -32,6 +33,7 @@ class DeploymentOrchestrator:
         self.ci_monitor = ci_monitor
         self.max_ci_polls = max_ci_polls
         self.loop = AutonomousDeploymentLoop(max_attempts=max_attempts)
+        self.max_attempts = max_attempts
 
     def run(
         self,
@@ -41,65 +43,59 @@ class DeploymentOrchestrator:
         owner: str = "",
         repository: str = "",
     ) -> DeploymentLoopResult:
-        """Loop را اجرا می‌کند و در صورت تنظیم CI Monitor، خطای CI را نیز خودکار رفع می‌کند."""
+        """CI را بررسی می‌کند، خطا را محدود به Branch رفع می‌کند و سپس Preview/QA را اجرا می‌کند."""
         adapter = AgentDeploymentAdapter(self._execute_fix_task)
-        ci_failure: dict[str, Any] = {}
         history: list[str] = []
+        current_context = context
 
+        def fix_failure(failure: dict[str, Any], source: str) -> bool:
+            payload = {
+                "status": "failed",
+                "source": source,
+                "failure": failure,
+            }
+            result = adapter.execute_fix(current_context, payload)
+            return adapter.can_retry(result)
+
+        # وقتی CI Monitor تنظیم شده، وضعیت واقعی GitHub بر مقدار بولی ورودی اولویت دارد.
         if self.ci_monitor is not None and owner and repository:
-            ci_result = self._wait_for_ci(owner, repository, context.branch)
-            if ci_result["status"] == "pending":
-                return DeploymentLoopResult(
-                    DeploymentState.CI_WAITING,
-                    0,
-                    [DeploymentState.CI_WAITING.value],
-                    ci_result,
-                )
-            if ci_result["status"] == "failed":
-                ci_failure = ci_result.get("failure", {})
-                ci_passed = False
-            elif ci_result["status"] == "passed":
-                ci_passed = True
+            for attempt in range(1, self.max_attempts + 1):
+                ci_result = self._wait_for_ci(owner, repository, current_context.branch)
+                history.append(DeploymentState.CI_WAITING.value)
+                if ci_result["status"] == "passed":
+                    ci_passed = True
+                    head_sha = str(ci_result.get("head_sha", "")).strip()
+                    if head_sha:
+                        current_context = replace(current_context, commit_sha=head_sha)
+                    history.append(DeploymentState.CI_PASSED.value)
+                    break
+                if ci_result["status"] == "pending":
+                    return DeploymentLoopResult(DeploymentState.CI_WAITING, attempt - 1, history, ci_result)
+                if ci_result["status"] == "not_found":
+                    return DeploymentLoopResult(DeploymentState.CI_FAILED, attempt - 1, history + [DeploymentState.CI_FAILED.value], ci_result)
+
+                history.append(DeploymentState.CI_FAILED.value)
+                failure = ci_result.get("failure", {})
+                if attempt == self.max_attempts:
+                    history.append(DeploymentState.MAX_RETRIES.value)
+                    return DeploymentLoopResult(DeploymentState.MAX_RETRIES, attempt, history, ci_result)
+                history.append(DeploymentState.ANALYZING.value)
+                if not fix_failure(failure, "github_actions"):
+                    history.append(DeploymentState.FAILED.value)
+                    return DeploymentLoopResult(DeploymentState.FAILED, attempt, history, ci_result)
+                history.extend([DeploymentState.FIXING.value, DeploymentState.COMMITTING.value])
+            else:
+                return DeploymentLoopResult(DeploymentState.MAX_RETRIES, self.max_attempts, history)
+        elif not ci_passed:
+            history.extend([DeploymentState.CI_WAITING.value, DeploymentState.CI_FAILED.value])
+            return DeploymentLoopResult(DeploymentState.CI_FAILED, 0, history)
 
         def analyze(result: dict[str, Any]) -> bool:
             return result.get("status") == "failed"
 
         def fix_and_commit(result: dict[str, Any]) -> bool:
-            payload = dict(result)
-            if ci_failure:
-                payload["ci_failure"] = ci_failure
-            fix_result = adapter.execute_fix(context, payload)
+            fix_result = adapter.execute_fix(current_context, result)
             return adapter.can_retry(fix_result)
-
-        if not ci_passed:
-            if not ci_failure or self.ci_monitor is None or not owner or not repository:
-                return DeploymentLoopResult(
-                    DeploymentState.CI_FAILED,
-                    0,
-                    [DeploymentState.CI_WAITING.value, DeploymentState.CI_FAILED.value],
-                    {"status": "failed", "failure": ci_failure},
-                )
-            history.extend([DeploymentState.CI_WAITING.value, DeploymentState.CI_FAILED.value])
-            if not fix_and_commit({"status": "failed", "source": "github_actions", "failure": ci_failure}):
-                history.append(DeploymentState.FAILED.value)
-                return DeploymentLoopResult(DeploymentState.FAILED, 0, history, ci_failure)
-            history.append(DeploymentState.FIXING.value)
-            history.append(DeploymentState.COMMITTING.value)
-            ci_after_fix = self._wait_for_ci(owner, repository, context.branch)
-            history.append(DeploymentState.CI_WAITING.value)
-            if ci_after_fix["status"] != "passed":
-                history.append(
-                    DeploymentState.MAX_RETRIES.value
-                    if ci_after_fix["status"] == "failed"
-                    else DeploymentState.CI_WAITING.value
-                )
-                return DeploymentLoopResult(
-                    DeploymentState.MAX_RETRIES if ci_after_fix["status"] == "failed" else DeploymentState.CI_WAITING,
-                    1,
-                    history,
-                    ci_after_fix,
-                )
-            ci_passed = True
 
         result = self.loop.run(
             ci_passed=ci_passed,
@@ -131,7 +127,7 @@ class DeploymentOrchestrator:
                 "هرگز Production را مستقیم تغییر نده. "
                 f"project={payload['project_id']} branch={payload['branch']} "
                 f"commit={payload['commit_sha']} preview={payload.get('preview_url', '')} "
-                f"qa={payload.get('qa', {})} ci={payload.get('ci_failure', {})}"
+                f"qa={payload.get('qa', {})} ci={payload.get('ci_failure', payload.get('failure', {}))}"
             ),
             agent="developer",
             metadata={
@@ -139,7 +135,7 @@ class DeploymentOrchestrator:
                 "project_id": payload["project_id"],
                 "branch": payload["branch"],
                 "commit_sha": payload["commit_sha"],
-                "ci_failure": payload.get("ci_failure", {}),
+                "ci_failure": payload.get("ci_failure", payload.get("failure", {})),
             },
             max_attempts=1,
         )
