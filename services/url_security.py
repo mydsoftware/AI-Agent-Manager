@@ -47,7 +47,7 @@ def validate_public_http_url(url: str) -> str:
 
 
 class _PinnedHostAdapter(HTTPAdapter):
-    """Adapterی که اتصال را به IP از قبل Resolve‌شده Pin می‌کند ولی SNI را روی Host نگه می‌دارد."""
+    """Adapterی که اتصال را به IP Resolve‌شده Pin می‌کند و SNI/گواهی را روی Host اصلی نگه می‌دارد."""
 
     def __init__(self, host: str, ip: str, **kwargs) -> None:
         """Adapter را با Host اصلی و IP عمومی Resolve‌شده آماده می‌کند."""
@@ -56,7 +56,7 @@ class _PinnedHostAdapter(HTTPAdapter):
         super().__init__(**kwargs)
 
     def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs) -> None:
-        """Pool را به IP ثابت متصل می‌کند و نام اصلی Host را برای TLS نگه می‌دارد."""
+        """Pool را به IP ثابت متصل می‌کند بدون غیرفعال‌کردن بررسی TLS hostname."""
         pool_kwargs["assert_hostname"] = self.host
         pool_kwargs["server_hostname"] = self.host
         self.poolmanager = PoolManager(num_pools=connections, maxsize=maxsize, block=block, **pool_kwargs)
@@ -102,7 +102,9 @@ def request_public_http(
             location = response.headers.get("Location")
             if not location:
                 return response
-            current = validate_public_http_url(urljoin(current, location))
+            next_url = validate_public_http_url(urljoin(current, location))
+            response.close()
+            current = next_url
         raise ValueError("تعداد Redirectهای URL از حد مجاز بیشتر است.")
     finally:
         session.close()
