@@ -7,7 +7,7 @@ from api.wordpress_connection_route import handle_wordpress_connection_check
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from manager.request_router import route_request
 from manager.workflow_engine import WorkflowEngine
-from manager.approval_policy import sensitive_tasks
+from manager.approval_policy import approval_fingerprint, sensitive_tasks
 from services.activity_store import ActivityStore
 from services.project_store import ProjectStore
 from services.workflow_store import WorkflowStore
@@ -32,25 +32,42 @@ def _has_cycle(tasks: list[dict]) -> bool:
 
 
 def _approval_gate(project_id: str, tasks: list, activity: ActivityStore) -> tuple[bool, dict | None]:
-    """برای Taskهای حساس، اجرای Workflow را تا تأیید کاربر متوقف می‌کند."""
+    """برای Taskهای حساس، فقط تأییدیه‌ای را می‌پذیرد که به همین Workflow متصل باشد."""
     sensitive = sensitive_tasks(tasks)
     if not sensitive:
         return True, None
-    approvals = activity.approvals(project_id)
     action = "workflow.sensitive-run"
-    pending = next((item for item in approvals if item.get("action") == action and item.get("status") == "pending"), None)
+    fingerprint = approval_fingerprint(project_id, action, sensitive)
+    approvals = activity.approvals(project_id)
+    pending = next((item for item in approvals if item.get("action") == action and item.get("status") == "pending" and item.get("fingerprint") == fingerprint), None)
     if pending:
         return False, {"approval_required": True, "approval": pending}
-    approved = next((item for item in approvals if item.get("action") == action and item.get("status") == "approved"), None)
+    approved = next((item for item in approvals if item.get("action") == action and item.get("status") == "approved" and item.get("fingerprint") == fingerprint), None)
     if approved:
-        return True, None
+        return True, {"approval": approved}
     approval = activity.create_approval(
         project_id,
         action,
         "اجرای Workflow شامل عملیات حساس است: " + ", ".join(task.title for task in sensitive),
+        fingerprint=fingerprint,
     )
     activity.add(project_id, "approval.required", "اجرای Workflow تا تأیید عملیات حساس متوقف شد.")
     return False, {"approval_required": True, "approval": approval}
+
+
+def _consume_gate_approval(gate: dict | None, activity: ActivityStore) -> None:
+    """پس از اجرای موفق، تأییدیه همان Workflow را یک‌بار مصرف می‌کند."""
+    if not gate:
+        return
+    approval = gate.get("approval")
+    if not isinstance(approval, dict) or approval.get("status") != "approved":
+        return
+    approval_id = str(approval.get("id", "")).strip()
+    if not approval_id:
+        return
+    consumed = activity.consume_approval(approval_id)
+    if consumed is not None:
+        activity.add(str(consumed["project_id"]), "approval.consumed", f"تأییدیه {approval_id} پس از اجرای موفق مصرف شد.")
 
 
 def _merge_report_into_workflow(workflow_data: dict, report: dict) -> dict:
@@ -193,6 +210,7 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
             report = manager_runtime.run_tasks(tasks); report_data = report.to_dict(); final = "completed" if report_data.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
             updated_workflow = _merge_report_into_workflow(saved["workflow"], report_data); workflows.save(project_id, updated_workflow)
             activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow ویرایش‌شده: {final}")
+            if final == "completed": _consume_gate_approval(gate, activity)
             return jsonify({"workflow": updated_workflow, "report": report_data, "project": projects.get(project_id)})
         except Exception as error:
             projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error)); return jsonify({"error": str(error)}), 500
@@ -209,6 +227,7 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
                 projects.set_status(project_id, "paused"); return jsonify(gate), 409
             execution = workflow.execute(text, agent); report = execution["report"]; final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
             execution["workflow"] = _merge_report_into_workflow(execution["workflow"], report); activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow: {final}"); workflows.save(project_id, execution["workflow"])
+            if final == "completed": _consume_gate_approval(gate, activity)
             return jsonify({"project": projects.get(project_id), "workflow": execution["workflow"], "report": report})
         except Exception as error:
             projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error)); return jsonify({"error": "اجرای پروژه ناموفق بود.", "detail": str(error)}), 500
