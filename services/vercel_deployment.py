@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 
@@ -69,7 +69,7 @@ class VercelDeploymentService:
             raise ValueError("project_id الزامی است.")
         params = {"teamId": team_id.strip()} if team_id and team_id.strip() else {}
         query = "?" + urlencode(params) if params else ""
-        return self.request("GET", f"/v9/projects/{project_id}{query}")
+        return self.request("GET", f"/v9/projects/{quote(project_id, safe='')}{query}")
 
     def deployments(self, project_id: str, team_id: str | None = None, limit: int = 20) -> dict[str, Any]:
         """Deploymentهای Project را با Query امن می‌خواند."""
@@ -90,4 +90,4 @@ class VercelDeploymentService:
             raise ValueError("deployment_id الزامی است.")
         params = {"teamId": team_id.strip()} if team_id and team_id.strip() else {}
         query = "?" + urlencode(params) if params else ""
-        return self.request("GET", f"/v13/deployments/{deployment_id}{query}")
+        return self.request("GET", f"/v13/deployments/{quote(deployment_id, safe='')}{query}")
