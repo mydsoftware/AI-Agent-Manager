@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from services.url_security import validate_public_http_url
+
 
 @dataclass(frozen=True)
 class BrowserCheck:
@@ -20,12 +22,11 @@ class BrowserQA:
         self.browser_factory = browser_factory
 
     def validate_url(self, url: str) -> str:
-        value = url.strip()
-        if not value.startswith(("https://", "http://")):
-            raise ValueError("URL باید با http:// یا https:// شروع شود.")
-        return value
+        """URL مقصد QA را فقط در صورت HTTP(S) و عمومی بودن Host تأیید می‌کند."""
+        return validate_public_http_url(url)
 
     def run_smoke(self, url: str) -> dict[str, Any]:
+        """یک Smoke Test محدود اجرا می‌کند و نتیجه بررسی بارگذاری و عنوان صفحه را برمی‌گرداند."""
         target = self.validate_url(url)
         if self.browser_factory is None:
             return {"url": target, "status": "not_configured", "checks": []}
