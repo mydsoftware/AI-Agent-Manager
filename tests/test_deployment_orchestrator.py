@@ -86,8 +86,10 @@ def test_orchestrator_recovers_from_ci_failure_before_preview():
     )
 
     assert result.state.value == "production_pending_approval"
-    assert len(executor.tasks) == 1
+    # یک Task برای رفع CI و یک Task برای رفع شکست اولین Browser QA ساخته می‌شود.
+    assert len(executor.tasks) == 2
     assert executor.tasks[0].metadata["ci_failure"]["run_id"] == 17
+    assert executor.tasks[0].metadata["branch"] == "feature/ci-fix"
     assert "ci_failed" in result.history
 
 
