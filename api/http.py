@@ -32,7 +32,7 @@ def _has_cycle(tasks: list[dict]) -> bool:
 
 
 def _approval_gate(project_id: str, tasks: list, activity: ActivityStore) -> tuple[bool, dict | None]:
-    """برای Taskهای حساس، فقط تأییدیه‌ای را می‌پذیرد که به همین Workflow متصل باشد."""
+    """برای Taskهای حساس، تأییدیه همان Workflow را به‌صورت اتمیک Claim می‌کند."""
     sensitive = sensitive_tasks(tasks)
     if not sensitive:
         return True, None
@@ -44,7 +44,11 @@ def _approval_gate(project_id: str, tasks: list, activity: ActivityStore) -> tup
         return False, {"approval_required": True, "approval": pending}
     approved = next((item for item in approvals if item.get("action") == action and item.get("status") == "approved" and item.get("fingerprint") == fingerprint), None)
     if approved:
-        return True, {"approval": approved}
+        approval_id = str(approved.get("id", "")).strip()
+        claimed = activity.claim_approval(approval_id, fingerprint) if approval_id else None
+        if claimed is not None:
+            return True, {"approval": claimed}
+        return False, {"approval_required": True, "approval": {**approved, "status": "pending", "reason": "تأییدیه همزمان توسط درخواست دیگری Claim شده است."}}
     approval = activity.create_approval(
         project_id,
         action,
@@ -55,12 +59,28 @@ def _approval_gate(project_id: str, tasks: list, activity: ActivityStore) -> tup
     return False, {"approval_required": True, "approval": approval}
 
 
-def _consume_gate_approval(gate: dict | None, activity: ActivityStore) -> None:
-    """پس از اجرای موفق، تأییدیه همان Workflow را یک‌بار مصرف می‌کند."""
+def _release_gate_approval(gate: dict | None, activity: ActivityStore) -> None:
+    """پس از شکست اجرا، Claim را فقط برای همان Workflow آزاد می‌کند."""
     if not gate:
         return
     approval = gate.get("approval")
-    if not isinstance(approval, dict) or approval.get("status") != "approved":
+    if not isinstance(approval, dict) or approval.get("status") != "claimed":
+        return
+    approval_id = str(approval.get("id", "")).strip()
+    fingerprint = str(approval.get("fingerprint", "")).strip()
+    if not approval_id or not fingerprint:
+        return
+    released = activity.release_approval(approval_id, fingerprint)
+    if released is not None:
+        activity.add(str(released["project_id"]), "approval.released", f"تأییدیه {approval_id} پس از شکست اجرا آزاد شد.")
+
+
+def _consume_gate_approval(gate: dict | None, activity: ActivityStore) -> None:
+    """پس از اجرای موفق، تأییدیه Claim‌شده همان Workflow را یک‌بار مصرف می‌کند."""
+    if not gate:
+        return
+    approval = gate.get("approval")
+    if not isinstance(approval, dict) or approval.get("status") != "claimed":
         return
     approval_id = str(approval.get("id", "")).strip()
     if not approval_id:
@@ -211,8 +231,10 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
             updated_workflow = _merge_report_into_workflow(saved["workflow"], report_data); workflows.save(project_id, updated_workflow)
             activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow ویرایش‌شده: {final}")
             if final == "completed": _consume_gate_approval(gate, activity)
+            else: _release_gate_approval(gate, activity)
             return jsonify({"workflow": updated_workflow, "report": report_data, "project": projects.get(project_id)})
         except Exception as error:
+            _release_gate_approval(gate, activity)
             projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error)); return jsonify({"error": str(error)}), 500
 
     @app.post("/api/project/<project_id>/run")
@@ -228,8 +250,10 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
             execution = workflow.execute(text, agent); report = execution["report"]; final = "completed" if report.get("status") in {"success", "completed"} else "failed"; projects.set_status(project_id, final)
             execution["workflow"] = _merge_report_into_workflow(execution["workflow"], report); activity.add(project_id, "workflow.completed" if final == "completed" else "workflow.failed", f"اجرای Workflow: {final}"); workflows.save(project_id, execution["workflow"])
             if final == "completed": _consume_gate_approval(gate, activity)
+            else: _release_gate_approval(gate, activity)
             return jsonify({"project": projects.get(project_id), "workflow": execution["workflow"], "report": report})
         except Exception as error:
+            _release_gate_approval(gate, activity)
             projects.set_status(project_id, "failed"); activity.add(project_id, "workflow.failed", str(error)); return jsonify({"error": "اجرای پروژه ناموفق بود.", "detail": str(error)}), 500
 
     @app.post("/api/project/<project_id>/workflow/plan")
