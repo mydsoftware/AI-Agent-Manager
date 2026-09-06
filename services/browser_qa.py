@@ -19,11 +19,29 @@ class BrowserQA:
     """لایه مستقل QA که می‌تواند به Playwright یا Browser Agent متصل شود."""
 
     def __init__(self, browser_factory: Callable[[], Any] | None = None) -> None:
+        """Factory اختیاری مرورگر را برای اجرای QA نگه می‌دارد."""
         self.browser_factory = browser_factory
 
     def validate_url(self, url: str) -> str:
         """URL مقصد QA را فقط در صورت HTTP(S) و عمومی بودن Host تأیید می‌کند."""
         return validate_public_http_url(url)
+
+    def _guard_requests(self, page: Any) -> None:
+        """هر Request مرورگر را پیش از ارسال دوباره برای جلوگیری از Redirect به شبکه داخلی بررسی می‌کند."""
+        if not hasattr(page, "on"):
+            return
+
+        def guard(request: Any) -> None:
+            """یک Request مرورگر را اعتبارسنجی و در صورت ناامن بودن متوقف می‌کند."""
+            request_url = str(getattr(request, "url", ""))
+            try:
+                validate_public_http_url(request_url)
+            except ValueError:
+                abort = getattr(request, "abort", None)
+                if callable(abort):
+                    abort()
+
+        page.on("request", guard)
 
     def run_smoke(self, url: str) -> dict[str, Any]:
         """یک Smoke Test محدود اجرا می‌کند و نتیجه بررسی بارگذاری و عنوان صفحه را برمی‌گرداند."""
@@ -35,6 +53,7 @@ class BrowserQA:
         page = browser.new_page()
         checks: list[BrowserCheck] = []
         try:
+            self._guard_requests(page)
             response = page.goto(target, wait_until="domcontentloaded")
             status = getattr(response, "status", None)
             checks.append(BrowserCheck("page_load", bool(status and status < 400), f"HTTP {status}"))
