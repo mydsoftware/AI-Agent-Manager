@@ -3,6 +3,7 @@ from __future__ import annotations
 from flask import Flask, jsonify, request
 
 from api.agent_team_api import AgentTeamAPI
+from api.wordpress_connection_route import handle_wordpress_connection_check
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from manager.request_router import route_request
 from manager.workflow_engine import WorkflowEngine
@@ -50,6 +51,7 @@ def _approval_gate(project_id: str, tasks: list, activity: ActivityStore) -> tup
     )
     activity.add(project_id, "approval.required", "اجرای Workflow تا تأیید عملیات حساس متوقف شد.")
     return False, {"approval_required": True, "approval": approval}
+
 
 def _merge_report_into_workflow(workflow_data: dict, report: dict) -> dict:
     """وضعیت واقعی اجرای Taskها را داخل Snapshot ذخیره‌شده Workflow می‌نشاند."""
@@ -252,6 +254,12 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         item = activity.resolve_approval(approval_id, status)
         if item is None: return jsonify({"error": "Approval پیدا نشد یا قبلاً تعیین تکلیف شده است."}), 404
         activity.add(item["project_id"], "approval.resolved", f"تأییدیه {approval_id}: {status}"); return jsonify(item)
+
+    @app.post("/api/wordpress/connection/check")
+    def wordpress_connection_check():
+        """بررسی اتصال WordPress از طریق Adapter مستقل Route."""
+        status, body = handle_wordpress_connection_check(request.get_data(cache=True), connection_api)
+        return jsonify(body), status
 
     @app.get("/api/health")
     def health(): return jsonify({"status": "ok"})
