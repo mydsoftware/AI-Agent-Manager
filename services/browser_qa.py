@@ -10,13 +10,15 @@ from services.url_security import validate_public_http_url
 
 @dataclass(frozen=True)
 class BrowserCheck:
+    """نتیجه یک بررسی Smoke Test مرورگر را نگه می‌دارد."""
+
     name: str
     passed: bool
     details: str = ""
 
 
 class BrowserQA:
-    """لایه مستقل QA که می‌تواند به Playwright یا Browser Agent متصل شود."""
+    """لایه مستقل QA با کنترل egress برای Navigation، Redirect و Subresource."""
 
     def __init__(self, browser_factory: Callable[[], Any] | None = None) -> None:
         """Factory اختیاری مرورگر را برای اجرای QA نگه می‌دارد."""
@@ -26,14 +28,37 @@ class BrowserQA:
         """URL مقصد QA را فقط در صورت HTTP(S) و عمومی بودن Host تأیید می‌کند."""
         return validate_public_http_url(url)
 
+    @staticmethod
+    def _request_url(request: Any) -> str:
+        """URL را از Request Playwright یا Fake Request استخراج می‌کند."""
+        return str(getattr(request, "url", ""))
+
+    def _guard_route(self, route: Any) -> None:
+        """هر Route را پیش از ارسال به شبکه اعتبارسنجی می‌کند."""
+        request = getattr(route, "request", None)
+        request_url = self._request_url(request)
+        try:
+            validate_public_http_url(request_url)
+        except ValueError:
+            abort = getattr(route, "abort", None)
+            if callable(abort):
+                abort()
+            return
+        continue_request = getattr(route, "continue_", None)
+        if callable(continue_request):
+            continue_request()
+
     def _guard_requests(self, page: Any) -> None:
-        """هر Request مرورگر را پیش از ارسال دوباره برای جلوگیری از Redirect به شبکه داخلی بررسی می‌کند."""
+        """در صورت نبود Route API، Request event را به‌عنوان دفاع عمقی کنترل می‌کند."""
+        if hasattr(page, "route"):
+            page.route("**/*", self._guard_route)
+            return
         if not hasattr(page, "on"):
             return
 
         def guard(request: Any) -> None:
-            """یک Request مرورگر را اعتبارسنجی و در صورت ناامن بودن متوقف می‌کند."""
-            request_url = str(getattr(request, "url", ""))
+            """Request مرورگر را اعتبارسنجی و در صورت ناامن بودن متوقف می‌کند."""
+            request_url = self._request_url(request)
             try:
                 validate_public_http_url(request_url)
             except ValueError:
