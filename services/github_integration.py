@@ -35,7 +35,7 @@ class GitHubIntegration:
 
     MAX_AGENT_LOG_CHARS = 4000
     _SECRET_PATTERNS = (
-        re.compile(r"(?i)(authorization\s*:\s*(?:bearer|token)\s+)[^\s]+"),
+        re.compile(r"(?i)(authorization\s*:\s*)[^\r\n]+"),
         re.compile(r"(?i)(\b(?:token|password|passwd|secret|api[_-]?key)\s*[=:]\s*)[^\s,;]+"),
         re.compile(r"\bghp_[A-Za-z0-9_]+\b"),
         re.compile(r"\bgithub_pat_[A-Za-z0-9_]+\b"),
@@ -156,12 +156,20 @@ class GitHubIntegration:
         failed_jobs = [job for job in jobs.get("jobs", []) if job.get("conclusion") == "failure"]
         diagnostics = []
         for job in failed_jobs[:5]:
-            diagnostics.append({
-                "job_id": job.get("id"),
+            job_id = job.get("id")
+            diagnostic = {
+                "job_id": job_id,
                 "name": str(job.get("name", ""))[:200],
                 "conclusion": job.get("conclusion"),
-                "log_excerpt": self.workflow_job_logs(owner, repository, int(job["id"])),
-            })
+            }
+            if isinstance(job_id, int) and job_id > 0:
+                try:
+                    diagnostic["log_excerpt"] = self.workflow_job_logs(owner, repository, job_id)
+                except (RuntimeError, ValueError):
+                    diagnostic["log_excerpt"] = "[LOG_UNAVAILABLE]"
+            else:
+                diagnostic["log_excerpt"] = "[LOG_UNAVAILABLE]"
+            diagnostics.append(diagnostic)
         return {
             "run_id": run.get("id"),
             "workflow": str(run.get("name", ""))[:200],
