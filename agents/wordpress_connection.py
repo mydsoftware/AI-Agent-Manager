@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
-import json
+from requests import RequestException
 
-from services.url_security import validate_public_http_url
+from services.url_security import request_public_http
 
 
 @dataclass(frozen=True)
@@ -31,33 +29,28 @@ class WordPressConnectionTester:
     """اتصال را بدون ایجاد تغییر در محتوای WordPress بررسی می‌کند."""
 
     def test(self, config: WordPressConnectionConfig) -> WordPressConnectionCheck:
-        """اتصال را با یک درخواست OPTIONS امن و بدون تغییر محتوا بررسی می‌کند."""
+        """اتصال را با درخواست OPTIONS امن و DNS-pinned بررسی می‌کند."""
+        endpoint = config.site_url.rstrip("/") + "/wp-json/ai-agent-manager/v1/seo/canonical"
         try:
-            site_url = validate_public_http_url(config.site_url)
+            response = request_public_http(
+                endpoint,
+                method="OPTIONS",
+                headers={"X-AI-Agent-Token": config.agent_token},
+                timeout=config.timeout,
+            )
+            if response.status_code in (401, 403):
+                return WordPressConnectionCheck(True, False, True, "سایت در دسترس است اما احراز هویت Agent ناموفق است.")
+            if response.status_code in (404, 405):
+                return WordPressConnectionCheck(True, True, False, "سایت در دسترس است اما Endpoint اختصاصی Agent موجود نیست.")
+            return WordPressConnectionCheck(
+                True,
+                response.status_code < 400,
+                response.status_code < 500,
+                "اتصال و Endpoint با موفقیت بررسی شدند." if response.status_code < 500 else f"WordPress پاسخ HTTP {response.status_code} داد.",
+            )
         except ValueError as exc:
             return WordPressConnectionCheck(False, False, False, str(exc))
-
-        endpoint = site_url.rstrip("/") + "/wp-json/ai-agent-manager/v1/seo/canonical"
-        request = Request(
-            endpoint,
-            method="OPTIONS",
-            headers={"X-AI-Agent-Token": config.agent_token},
-        )
-        try:
-            with urlopen(request, timeout=config.timeout) as response:
-                return WordPressConnectionCheck(
-                    reachable=True,
-                    authenticated=response.status not in (401, 403),
-                    writer_endpoint_available=response.status < 500,
-                    message="اتصال و Endpoint با موفقیت بررسی شدند.",
-                )
-        except HTTPError as exc:
-            if exc.code in (401, 403):
-                return WordPressConnectionCheck(True, False, True, "سایت در دسترس است اما احراز هویت Agent ناموفق است.")
-            if exc.code in (404, 405):
-                return WordPressConnectionCheck(True, True, False, "سایت در دسترس است اما Endpoint اختصاصی Agent موجود نیست.")
-            return WordPressConnectionCheck(True, False, True, f"WordPress پاسخ HTTP {exc.code} داد.")
-        except URLError as exc:
-            return WordPressConnectionCheck(False, False, False, f"اتصال به سایت برقرار نشد: {exc.reason}")
+        except RequestException as exc:
+            return WordPressConnectionCheck(False, False, False, f"اتصال به سایت برقرار نشد: {exc}")
         except Exception as exc:
             return WordPressConnectionCheck(False, False, False, f"خطای بررسی اتصال: {exc}")
