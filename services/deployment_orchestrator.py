@@ -53,6 +53,7 @@ class DeploymentOrchestrator:
                 "status": "failed",
                 "source": source,
                 "failure": failure,
+                "ci_failure": failure if source == "github_actions" else {},
             }
             result = adapter.execute_fix(current_context, payload)
             return adapter.can_retry(result)
@@ -120,6 +121,7 @@ class DeploymentOrchestrator:
 
     def _execute_fix_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         """درخواست Fix را فقط از مسیر TaskExecutor واقعی عبور می‌دهد."""
+        ci_failure = payload.get("ci_failure", payload.get("failure", payload.get("qa", {})))
         task = Task(
             title="رفع خطای CI/Browser QA",
             description=(
@@ -127,7 +129,7 @@ class DeploymentOrchestrator:
                 "هرگز Production را مستقیم تغییر نده. "
                 f"project={payload['project_id']} branch={payload['branch']} "
                 f"commit={payload['commit_sha']} preview={payload.get('preview_url', '')} "
-                f"qa={payload.get('qa', {})} ci={payload.get('ci_failure', payload.get('failure', {}))}"
+                f"qa={payload.get('qa', {})} ci={ci_failure}"
             ),
             agent="developer",
             metadata={
@@ -135,7 +137,7 @@ class DeploymentOrchestrator:
                 "project_id": payload["project_id"],
                 "branch": payload["branch"],
                 "commit_sha": payload["commit_sha"],
-                "ci_failure": payload.get("ci_failure", payload.get("failure", {})),
+                "ci_failure": ci_failure,
             },
             max_attempts=1,
         )
