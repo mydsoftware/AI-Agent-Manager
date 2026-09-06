@@ -121,7 +121,16 @@ class DeploymentOrchestrator:
 
     def _execute_fix_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         """درخواست Fix را فقط از مسیر TaskExecutor واقعی عبور می‌دهد."""
-        ci_failure = payload.get("ci_failure", payload.get("failure", payload.get("qa", {})))
+        qa_payload = payload.get("qa", {})
+        if not isinstance(qa_payload, dict):
+            qa_payload = {}
+        ci_failure = (
+            payload.get("ci_failure")
+            or payload.get("failure")
+            or qa_payload.get("ci_failure")
+            or qa_payload.get("failure")
+            or qa_payload
+        )
         task = Task(
             title="رفع خطای CI/Browser QA",
             description=(
