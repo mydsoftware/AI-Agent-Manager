@@ -5,6 +5,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import json
 
+from services.url_security import validate_public_http_url
+
 
 @dataclass(frozen=True)
 class WordPressConnectionConfig:
@@ -29,7 +31,13 @@ class WordPressConnectionTester:
     """اتصال را بدون ایجاد تغییر در محتوای WordPress بررسی می‌کند."""
 
     def test(self, config: WordPressConnectionConfig) -> WordPressConnectionCheck:
-        endpoint = config.site_url.rstrip("/") + "/wp-json/ai-agent-manager/v1/seo/canonical"
+        """اتصال را با یک درخواست OPTIONS امن و بدون تغییر محتوا بررسی می‌کند."""
+        try:
+            site_url = validate_public_http_url(config.site_url)
+        except ValueError as exc:
+            return WordPressConnectionCheck(False, False, False, str(exc))
+
+        endpoint = site_url.rstrip("/") + "/wp-json/ai-agent-manager/v1/seo/canonical"
         request = Request(
             endpoint,
             method="OPTIONS",
