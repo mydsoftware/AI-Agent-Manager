@@ -61,6 +61,8 @@ def require_auth(*roles: str) -> Callable:
 
 def _project_id_from_path(path: str) -> str | None:
     """شناسه پروژه را فقط از مسیرهای استاندارد Project API استخراج می‌کند."""
+    if path == "/api/project/create" or path.startswith("/api/project/create/"):
+        return None
     match = re.match(r"^/api/project/([^/]+)(?:/|$)", path)
     return match.group(1) if match else None
 
@@ -92,7 +94,7 @@ def install_api_auth(app: Flask) -> None:
     @app.before_request
     def _authenticate_api():
         """درخواست‌های /api را پیش از اجرای Handler احراز و scope می‌کند."""
-        if not request.path.startswith("/api/") or request.path == "/api/health":
+        if not request.path.startswith("/api/") or request.path in {"/api/health", "/api/route"}:
             return None
         principal = authenticate()
         if principal is None:
