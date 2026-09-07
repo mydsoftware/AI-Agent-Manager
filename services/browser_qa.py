@@ -68,6 +68,15 @@ class BrowserQA:
 
         page.on("request", guard)
 
+    @staticmethod
+    def _new_page_with_service_workers_blocked(browser: Any) -> tuple[Any, Any]:
+        """Context جدید Playwright را با Service Worker مسدود و Page آن را ایجاد می‌کند."""
+        new_context = getattr(browser, "new_context", None)
+        if not callable(new_context):
+            return browser, browser.new_page()
+        context = new_context(service_workers="block")
+        return context, context.new_page()
+
     def run_smoke(self, url: str) -> dict[str, Any]:
         """یک Smoke Test محدود اجرا می‌کند و نتیجه بررسی بارگذاری و عنوان صفحه را برمی‌گرداند."""
         target = self.validate_url(url)
@@ -75,9 +84,11 @@ class BrowserQA:
             return {"url": target, "status": "not_configured", "checks": []}
 
         browser = self.browser_factory()
-        page = browser.new_page()
+        context = None
+        page = None
         checks: list[BrowserCheck] = []
         try:
+            context, page = self._new_page_with_service_workers_blocked(browser)
             self._guard_requests(page)
             response = page.goto(target, wait_until="domcontentloaded")
             status = getattr(response, "status", None)
@@ -91,6 +102,9 @@ class BrowserQA:
             }
         finally:
             try:
-                browser.close()
+                if context is not None and context is not browser:
+                    context.close()
+                else:
+                    browser.close()
             except Exception:
                 pass
