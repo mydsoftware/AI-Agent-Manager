@@ -53,3 +53,34 @@ def test_route_endpoint_preserves_unauthenticated_contract(auth_env):
     client = app.test_client()
     response = client.post("/api/route", json={"request": "ساخت یک سایت فروشگاهی"})
     assert response.status_code == 200
+
+
+def test_operator_cannot_use_global_github_write_api(auth_env):
+    """Operator نباید بتواند endpointهای سراسری GitHub را مستقیم اجرا کند."""
+    app = create_manager_app()
+    client = app.test_client()
+    response = client.post(
+        "/api/github/issue",
+        json={"owner": "x", "repository": "y", "title": "x", "body": "x"},
+        headers=auth_env["operator"],
+    )
+    assert response.status_code == 403
+
+
+def test_operator_cannot_manage_global_agents(auth_env):
+    """مدیریت Agentهای سراسری فقط برای Admin مجاز است."""
+    app = create_manager_app()
+    client = app.test_client()
+    response = client.post(
+        "/api/agents/create",
+        json={"name": "x", "description": "x", "system_prompt": "x", "capabilities": []},
+        headers=auth_env["operator"],
+    )
+    assert response.status_code == 403
+
+
+def test_operator_requires_project_scope_for_memory(auth_env):
+    """Operator نباید بدون project scope به حافظه سراسری دسترسی داشته باشد."""
+    app = create_manager_app()
+    client = app.test_client()
+    assert client.get("/api/memory", headers=auth_env["operator"]).status_code == 403
