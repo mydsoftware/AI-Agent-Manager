@@ -46,6 +46,47 @@ def test_browser_qa_reports_not_configured():
     assert result["checks"] == []
 
 
+def test_browser_qa_creates_context_with_service_workers_blocked(monkeypatch):
+    """QA واقعی باید Service Worker را پیش از navigation مسدود کند."""
+    monkeypatch.setattr("services.browser_qa.validate_public_http_url", lambda url: url)
+
+    class FakePage:
+        def route(self, *_args):
+            pass
+
+        def goto(self, *_args, **_kwargs):
+            return type("Response", (), {"status": 200})()
+
+        def title(self):
+            return "QA"
+
+    class FakeContext:
+        def __init__(self):
+            self.page = FakePage()
+
+        def new_page(self):
+            return self.page
+
+        def close(self):
+            pass
+
+    class FakeBrowser:
+        def __init__(self):
+            self.kwargs = None
+
+        def new_context(self, **kwargs):
+            self.kwargs = kwargs
+            return FakeContext()
+
+        def close(self):
+            pass
+
+    browser = FakeBrowser()
+    result = BrowserQA(lambda: browser).run_smoke("https://example.com")
+    assert result["status"] == "passed"
+    assert browser.kwargs == {"service_workers": "block"}
+
+
 def test_deployment_api_requires_authentication(monkeypatch):
     monkeypatch.setenv("MANAGER_API_TOKEN", "test-manager-token")
     from flask import Flask
