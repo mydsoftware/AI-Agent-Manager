@@ -56,13 +56,25 @@ class ProjectStore:
         try:
             from api.auth import current_principal
             principal = current_principal()
-        except RuntimeError:
-            principal = None
-        except ImportError:
+        except (RuntimeError, ImportError):
             principal = None
         if principal is not None:
             return principal.subject
         return str(owner_id).strip() or "system"
+
+    @staticmethod
+    def _request_owner_scope(owner_id: str | None) -> tuple[str | None, bool]:
+        """Scope فهرست پروژه را از Principal جاری استخراج می‌کند؛ admin همه پروژه‌ها را می‌بیند."""
+        if owner_id is not None:
+            return str(owner_id).strip() or None, False
+        try:
+            from api.auth import current_principal
+            principal = current_principal()
+        except (RuntimeError, ImportError):
+            principal = None
+        if principal is None:
+            return None, True
+        return (None, True) if principal.role == "admin" else (principal.subject, False)
 
     def create(self, *, name: str, description: str, request: str,
                project_type: str = "website", is_private: bool = True,
@@ -102,10 +114,13 @@ class ProjectStore:
         return self.get(project_id)
 
     def list(self, owner_id: str | None = None, include_all: bool = False) -> list[dict[str, object]]:
-        """پروژه‌ها را فقط برای مالک مشخص یا در حالت admin برمی‌گرداند."""
+        """پروژه‌ها را بر اساس owner جاری یا مالک صریح برمی‌گرداند."""
+        scoped_owner, all_projects = self._request_owner_scope(owner_id)
+        if include_all:
+            all_projects = True
         with self._connect() as connection:
-            if include_all or owner_id is None:
+            if all_projects:
                 rows = connection.execute("SELECT * FROM projects ORDER BY created_at DESC").fetchall()
             else:
-                rows = connection.execute("SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at DESC", (owner_id,)).fetchall()
+                rows = connection.execute("SELECT * FROM projects WHERE owner_id = ? ORDER BY created_at DESC", (scoped_owner,)).fetchall()
         return [dict(row) for row in rows]
