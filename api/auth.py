@@ -88,12 +88,75 @@ def _check_project_scope(project_id: str) -> tuple[bool, tuple[dict, int] | None
     return True, None
 
 
+def _admin_only(path: str, method: str) -> bool:
+    """مسیرهای مدیریتی سراسری را از دسترسی operator و viewer جدا می‌کند."""
+    if path.startswith("/api/github/"):
+        return True
+    if path in {"/api/agents/create"}:
+        return True
+    if path.startswith("/api/agents/custom/") and method == "DELETE":
+        return True
+    if re.match(r"^/api/agents/[^/]+/(enable|disable)$", path):
+        return True
+    return False
+
+
+def _scoped_resource_project_id(path: str) -> tuple[str | None, bool]:
+    """شناسه پروژه منابع حافظه، دانش و لاگ را استخراج می‌کند؛ نیاز به scope را هم اعلام می‌کند."""
+    if path.startswith("/api/agent-logs"):
+        if request.method == "GET":
+            return request.args.get("project_id"), True
+        payload = request.get_json(silent=True) or {}
+        return (str(payload.get("project_id")) if payload.get("project_id") is not None else None), True
+    if path.startswith("/api/memory") or path.startswith("/api/knowledge"):
+        if request.method == "GET":
+            return request.args.get("scope_id") if request.args.get("scope") in {None, "project"} else None, True
+        if request.method == "POST":
+            payload = request.get_json(silent=True) or {}
+            return (str(payload.get("scope_id")) if payload.get("scope") in {None, "project"} and payload.get("scope_id") is not None else None), True
+        return None, True
+    return None, False
+
+
+def _check_scoped_resource(project_id: str | None) -> tuple[bool, tuple[dict, int] | None]:
+    """دسترسی operator و viewer را به منابع فقط برای پروژه متعلق به خود محدود می‌کند."""
+    principal = current_principal()
+    if principal is None:
+        return False, ({"error": "احراز هویت الزامی است."}, 401)
+    if principal.role == "admin":
+        return True, None
+    if not project_id:
+        return False, ({"error": "دسترسی این نقش فقط با project_id معتبر مجاز است."}, 403)
+    return _check_project_scope(project_id)
+
+
+def _check_resource_id_scope(path: str) -> tuple[bool, tuple[dict, int] | None]:
+    """برای endpointهای دارای شناسه، پروژه مرتبط را از Store پیدا و مالکیت آن را بررسی می‌کند."""
+    principal = current_principal()
+    if principal is None or principal.role == "admin":
+        return (principal is not None), None if principal is not None else ({"error": "احراز هویت الزامی است."}, 401)
+    try:
+        if re.match(r"^/api/memory/\d+$", path):
+            from services.memory_store import MemoryStore
+            item = MemoryStore().get(int(path.rsplit("/", 1)[1]))
+            project_id = str(item.get("scope_id")) if item and item.get("scope") == "project" else None
+        elif re.match(r"^/api/knowledge/\d+$", path):
+            from services.knowledge_store import KnowledgeStore
+            item = KnowledgeStore().get(int(path.rsplit("/", 1)[1]))
+            project_id = str(item.get("scope_id")) if item and item.get("scope") == "project" else None
+        else:
+            return True, None
+    except (TypeError, ValueError):
+        return False, ({"error": "منبع پیدا نشد."}, 404)
+    return _check_scoped_resource(project_id)
+
+
 def install_api_auth(app: Flask) -> None:
     """احراز هویت، RBAC و Project Scope را برای APIهای مدیریتی نصب می‌کند."""
 
     @app.before_request
     def _authenticate_api():
-        """درخواست‌های /api را پیش از اجرای Handler احراز و scope می‌کند."""
+        """درخواست‌های /api را پیش از اجرای Handler احراز، نقش‌بندی و scope می‌کند."""
         if not request.path.startswith("/api/") or request.path in {"/api/health", "/api/route"}:
             return None
         principal = authenticate()
@@ -102,6 +165,8 @@ def install_api_auth(app: Flask) -> None:
         g.principal = principal
         if principal.role == "viewer" and request.method not in {"GET", "HEAD", "OPTIONS"}:
             return jsonify({"error": "Viewer فقط دسترسی خواندنی دارد."}), 403
+        if _admin_only(request.path, request.method) and principal.role != "admin":
+            return jsonify({"error": "این عملیات فقط برای Admin مجاز است."}), 403
 
         project_id = _project_id_from_path(request.path)
         if project_id:
@@ -124,6 +189,15 @@ def install_api_auth(app: Flask) -> None:
                 return jsonify(error[0]), error[1]
         if request.path == "/api/approvals" and not request.args.get("project_id") and principal.role != "admin":
             return jsonify({"error": "برای مشاهده Approvalها باید project_id مشخص شود."}), 403
+
+        if request.path.startswith(("/api/memory", "/api/knowledge", "/api/agent-logs")):
+            if request.path.count("/") >= 4 and re.search(r"/(\d+)$", request.path):
+                allowed, error = _check_resource_id_scope(request.path)
+            else:
+                scoped_project, needs_scope = _scoped_resource_project_id(request.path)
+                allowed, error = _check_scoped_resource(scoped_project) if needs_scope else (True, None)
+            if not allowed:
+                return jsonify(error[0]), error[1]
         return None
 
 
