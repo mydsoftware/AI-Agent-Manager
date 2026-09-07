@@ -50,11 +50,25 @@ class ProjectStore:
         value = re.sub(r"[^\w\-]+", "-", value.strip().lower(), flags=re.UNICODE)
         return value.strip("-") or "project"
 
+    @staticmethod
+    def _request_owner(owner_id: str) -> str:
+        """در HTTP از هویت احراز‌شده استفاده می‌کند و در مصرف مستقیم، مالک صریح را حفظ می‌کند."""
+        try:
+            from api.auth import current_principal
+            principal = current_principal()
+        except RuntimeError:
+            principal = None
+        except ImportError:
+            principal = None
+        if principal is not None:
+            return principal.subject
+        return str(owner_id).strip() or "system"
+
     def create(self, *, name: str, description: str, request: str,
                project_type: str = "website", is_private: bool = True,
                owner_id: str = "system") -> dict[str, object]:
-        """پروژه را با مالک مشخص ایجاد می‌کند."""
-        owner = str(owner_id).strip() or "system"
+        """پروژه را به مالک احراز‌شده درخواست جاری متصل می‌کند."""
+        owner = self._request_owner(owner_id)
         project_id = str(uuid4())
         repository = f"local/{self._slug(name)}-{project_id[:8]}"
         created_at = datetime.now(timezone.utc).isoformat()
