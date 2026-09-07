@@ -46,3 +46,10 @@ def test_project_isolation_returns_404_for_other_owner(auth_env):
     project_id = created.get_json()["id"]
     assert client.get(f"/api/project/{project_id}", headers=auth_env["viewer"]).status_code == 404
     assert client.get(f"/api/project/{project_id}", headers=auth_env["admin"]).status_code == 200
+
+
+def test_route_endpoint_preserves_unauthenticated_contract(auth_env):
+    app = create_manager_app()
+    client = app.test_client()
+    response = client.post("/api/route", json={"request": "ساخت یک سایت فروشگاهی"})
+    assert response.status_code == 200
