@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import hmac
+import os
+from dataclasses import dataclass
+from functools import wraps
+from typing import Callable
+
+from flask import Flask, jsonify, request, g
+
+
+@dataclass(frozen=True)
+class Principal:
+    """هویت احراز‌شده API و نقش دسترسی آن را نگه می‌دارد."""
+
+    subject: str
+    role: str
+
+
+def _token_map() -> dict[str, Principal]:
+    """توکن‌های نقش‌دار را فقط از متغیرهای محیطی می‌خواند و هرگز مقدارشان را لاگ نمی‌کند."""
+    values = {
+        "MANAGER_API_TOKEN": ("manager-admin", "admin"),
+        "MANAGER_OPERATOR_TOKEN": ("manager-operator", "operator"),
+        "MANAGER_VIEWER_TOKEN": ("manager-viewer", "viewer"),
+    }
+    return {name: Principal(subject, role) for name, (subject, role) in values.items() if os.getenv(name)}
+
+
+def authenticate() -> Principal | None:
+    """X-Manager-API-Key را با compare_digest بررسی و Principal متناظر را برمی‌گرداند."""
+    supplied = request.headers.get("X-Manager-API-Key", "")
+    if not supplied:
+        return None
+    for env_name, principal in _token_map().items():
+        expected = os.getenv(env_name, "")
+        if expected and hmac.compare_digest(supplied, expected):
+            return principal
+    return None
+
+
+def require_auth(*roles: str) -> Callable:
+    """Decorator احراز هویت و در صورت نیاز محدودیت نقش را اعمال می‌کند."""
+    allowed = set(roles)
+
+    def decorator(view: Callable) -> Callable:
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            principal = getattr(g, "principal", None)
+            if principal is None:
+                return jsonify({"error": "احراز هویت الزامی است."}), 401
+            if allowed and principal.role not in allowed:
+                return jsonify({"error": "مجوز کافی برای این عملیات وجود ندارد."}), 403
+            return view(*args, **kwargs)
+        return wrapped
+
+    return decorator
+
+
+def install_api_auth(app: Flask) -> None:
+    """احراز هویت مرکزی و کنترل Scope پروژه را برای APIهای مدیریتی نصب می‌کند."""
+
+    @app.before_request
+    def _authenticate_api():
+        """درخواست‌های /api را قبل از اجرای Handler احراز هویت می‌کند."""
+        if not request.path.startswith("/api/") or request.path == "/api/health":
+            return None
+        principal = authenticate()
+        if principal is None:
+            return jsonify({"error": "احراز هویت الزامی است."}), 401
+        g.principal = principal
+        return None
+
+
+def current_principal() -> Principal | None:
+    """Principal درخواست جاری را بدون افشای credential برمی‌گرداند."""
+    return getattr(g, "principal", None)
+
+
+def project_access_allowed(project: dict | None) -> bool:
+    """دسترسی پروژه را بر اساس owner و نقش admin بررسی می‌کند."""
+    if project is None:
+        return False
+    principal = current_principal()
+    if principal is None:
+        return False
+    return principal.role == "admin" or str(project.get("owner_id", "")) == principal.subject
