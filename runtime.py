@@ -23,6 +23,38 @@ from services.github_integration import GitHubIntegration
 from services.vercel_deployment import VercelDeploymentService
 
 
+class _ManagedBrowser:
+    """Browser و Playwright runtime را به‌صورت یک Lifecycle واحد مدیریت می‌کند."""
+
+    def __init__(self, playwright, browser) -> None:
+        self._playwright = playwright
+        self._browser = browser
+
+    def new_page(self, *args, **kwargs):
+        """یک Page جدید از Browser مدیریت‌شده می‌سازد."""
+        return self._browser.new_page(*args, **kwargs)
+
+    def close(self) -> None:
+        """Browser و سپس runtime مربوط به Playwright را می‌بندد."""
+        try:
+            self._browser.close()
+        finally:
+            self._playwright.stop()
+
+
+def _create_browser_for_qa() -> _ManagedBrowser:
+    """یک Browser Chromium مستقل و کوتاه‌عمر برای هر اجرای QA می‌سازد."""
+    from playwright.sync_api import sync_playwright
+
+    playwright = sync_playwright().start()
+    try:
+        browser = playwright.chromium.launch(headless=True)
+        return _ManagedBrowser(playwright, browser)
+    except Exception:
+        playwright.stop()
+        raise
+
+
 class ManagerRuntime:
     """محیط اجرای اصلی مدیر چندایجنتی با تیم Agent پایدار."""
 
@@ -45,7 +77,7 @@ class ManagerRuntime:
         self.github = GitHubIntegration()
         self.ci_monitor = CIMonitor(self.github)
         self.vercel = VercelDeploymentService()
-        self.browser_qa = BrowserQA()
+        self.browser_qa = BrowserQA(browser_factory=_create_browser_for_qa)
         self.deployment_adapter = AgentDeploymentAdapter.from_task_executor(self.executor)
         self.deployment_orchestrator = DeploymentOrchestrator(
             executor=self.executor,
