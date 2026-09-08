@@ -243,6 +243,7 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
         if not project: return jsonify({"error": "پروژه پیدا نشد."}), 404
         payload = request.get_json(silent=True) or {}; text = str(payload.get("request", "")).strip() or str(project["request"]).strip(); agent = str(payload.get("agent", "")).strip() or None
         _ = runtime_for_project
+        gate = None
         try:
             projects.set_status(project_id, "planning"); activity.add(project_id, "workflow.planning", "برنامه Workflow ساخته شد."); plan = workflow.plan(text, agent); gate_tasks = plan.tasks; allowed, gate = _approval_gate(project_id, gate_tasks, activity)
             if not allowed:
