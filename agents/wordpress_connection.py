@@ -36,6 +36,7 @@ class WordPressConnectionTester:
                 endpoint,
                 method="OPTIONS",
                 headers={"X-AI-Agent-Token": config.agent_token},
+                sensitive_headers={"X-AI-Agent-Token"},
                 timeout=config.timeout,
             )
             if response.status_code in (401, 403):
