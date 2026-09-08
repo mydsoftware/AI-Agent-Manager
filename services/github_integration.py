@@ -37,7 +37,7 @@ class GitHubIntegration:
     _SECRET_PATTERNS = (
         re.compile(r"(?i)(authorization\s*:\s*)[^\r\n]+"),
         re.compile(r"(?i)(\b(?:token|password|passwd|secret|api[_-]?key)\s*[=:]\s*)[^\s,;]+"),
-        re.compile(r"\bghp_[A-Za-z0-9_]+\b"),
+        re.compile(r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+\b"),
         re.compile(r"\bgithub_pat_[A-Za-z0-9_]+\b"),
         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
     )
