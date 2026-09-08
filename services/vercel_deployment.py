@@ -10,6 +10,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from services.github_integration import GitHubIntegration
+
 
 @dataclass(frozen=True)
 class VercelConfig:
@@ -57,7 +59,8 @@ class VercelDeploymentService:
                 raw = response.read().decode("utf-8")
                 return json.loads(raw) if raw else {}
         except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")[:500]
+            raw_detail = error.read().decode("utf-8", errors="replace")
+            detail = GitHubIntegration._sanitize_log(raw_detail, 500).replace(self.config.token, "[REDACTED]")
             raise RuntimeError(f"Vercel API خطا داد ({error.code}): {detail}") from error
         except URLError as error:
             raise RuntimeError("ارتباط با Vercel برقرار نشد.") from error
