@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from typing import Any, Callable
 
@@ -24,14 +25,18 @@ class DeploymentOrchestrator:
         max_attempts: int = 3,
         ci_monitor: CIMonitor | None = None,
         max_ci_polls: int = 5,
+        ci_poll_interval_seconds: float = 5.0,
     ) -> None:
         if max_ci_polls < 1:
             raise ValueError("max_ci_polls باید حداقل ۱ باشد.")
+        if ci_poll_interval_seconds < 0:
+            raise ValueError("ci_poll_interval_seconds نمی‌تواند منفی باشد.")
         self.executor = executor
         self.vercel = vercel
         self.browser_qa = browser_qa
         self.ci_monitor = ci_monitor
         self.max_ci_polls = max_ci_polls
+        self.ci_poll_interval_seconds = ci_poll_interval_seconds
         self.loop = AutonomousDeploymentLoop(max_attempts=max_attempts)
         self.max_attempts = max_attempts
 
@@ -58,7 +63,6 @@ class DeploymentOrchestrator:
             result = adapter.execute_fix(current_context, payload)
             return adapter.can_retry(result)
 
-        # وقتی CI Monitor تنظیم شده، وضعیت واقعی GitHub بر مقدار بولی ورودی اولویت دارد.
         if self.ci_monitor is not None and owner and repository:
             for attempt in range(1, self.max_attempts + 1):
                 ci_result = self._wait_for_ci(owner, repository, current_context.branch)
@@ -110,13 +114,15 @@ class DeploymentOrchestrator:
         return result
 
     def _wait_for_ci(self, owner: str, repository: str, branch: str) -> dict[str, Any]:
-        """CI را با سقف polling می‌خواند تا Agent در انتظار بی‌نهایت نماند."""
+        """CI را با سقف polling و فاصله قابل تنظیم می‌خواند تا Agent در انتظار بی‌نهایت نماند."""
         assert self.ci_monitor is not None
         latest: dict[str, Any] = {"status": "pending", "branch": branch}
-        for _ in range(self.max_ci_polls):
+        for poll_index in range(self.max_ci_polls):
             latest = self.ci_monitor.latest(owner, repository, branch)
             if latest.get("status") in {"passed", "failed", "not_found"}:
                 return latest
+            if poll_index < self.max_ci_polls - 1 and self.ci_poll_interval_seconds > 0:
+                time.sleep(self.ci_poll_interval_seconds)
         return latest
 
     def _execute_fix_task(self, payload: dict[str, Any]) -> dict[str, Any]:
