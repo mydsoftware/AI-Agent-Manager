@@ -68,17 +68,23 @@ class _PinnedHostAdapter(HTTPAdapter):
         port = parsed.port or (443 if scheme == "https" else 80)
         return self.poolmanager.connection_from_host(self.ip, port=port, scheme=scheme)
 
+    def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+        """Hook جدید Requests را نیز به همان IP اعتبارسنجی‌شده Pin می‌کند."""
+        return self.get_connection(request.url, proxies)
+
 
 def request_public_http(
     url: str,
     *,
     method: str = "GET",
     headers: dict[str, str] | None = None,
+    sensitive_headers: set[str] | None = None,
     timeout: int = 15,
     max_redirects: int = 3,
 ) -> requests.Response:
-    """درخواست HTTP(S) را با IP Resolve‌شده و Redirectهای دوباره‌اعتبارسنجی‌شده اجرا می‌کند."""
+    """درخواست HTTP(S) را با DNS pinning، Redirect validation و کنترل Credential اجرا می‌کند."""
     current = validate_public_http_url(url)
+    initial = urlparse(current)
     session = requests.Session()
     try:
         for _ in range(max_redirects + 1):
@@ -89,13 +95,31 @@ def request_public_http(
             adapter = _PinnedHostAdapter(host, ip)
             session.mount(f"{parsed.scheme}://", adapter)
             request_headers = dict(headers or {})
-            request_headers["Host"] = host if parsed.port is None else f"{host}:{parsed.port}"
+            if parsed.port is None:
+                request_headers["Host"] = host
+            else:
+                request_headers["Host"] = f"{host}:{parsed.port}"
+
+            same_origin = (
+                parsed.scheme.lower() == initial.scheme.lower()
+                and host.lower() == (initial.hostname or "").lower()
+                and port == (initial.port or (443 if initial.scheme == "https" else 80))
+            )
+            if not same_origin:
+                protected = {"authorization", "proxy-authorization", "cookie"}
+                protected.update(item.lower() for item in (sensitive_headers or set()))
+                request_headers = {
+                    key: value for key, value in request_headers.items() if key.lower() not in protected
+                }
+                request_headers["Host"] = host if parsed.port is None else f"{host}:{parsed.port}"
+
             response = session.request(
                 method,
                 current,
                 headers=request_headers,
                 timeout=timeout,
                 allow_redirects=False,
+                stream=True,
             )
             if response.status_code not in {301, 302, 303, 307, 308}:
                 return response
