@@ -11,6 +11,8 @@ from uuid import uuid4
 class ActivityStore:
     """Activity و Approval را در SQLite پایدار نگه می‌دارد."""
 
+    ACTIVE_APPROVAL_STATUSES = ("pending", "approved", "claimed")
+
     def __init__(self, database_path: str = "data/platform.db") -> None:
         self.database_path = database_path
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
@@ -20,6 +22,7 @@ class ActivityStore:
             columns = {row[1] for row in db.execute("PRAGMA table_info(approvals)").fetchall()}
             if "fingerprint" not in columns:
                 db.execute("ALTER TABLE approvals ADD COLUMN fingerprint TEXT")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_approvals_project_fingerprint ON approvals(project_id, fingerprint)")
 
     def add(self, project_id: str, event_type: str, message: str) -> dict[str, object]:
         """یک رویداد را در Activity ثبت می‌کند."""
@@ -36,11 +39,35 @@ class ActivityStore:
         return [dict(row) for row in rows]
 
     def create_approval(self, project_id: str, action: str, description: str, fingerprint: str | None = None) -> dict[str, object]:
-        """یک Approval جدید را با fingerprint اختیاری ایجاد می‌کند."""
-        approval_id = str(uuid4())
+        """Approval فعال را برای fingerprint یکتا ایجاد یا رکورد فعال موجود را برمی‌گرداند."""
         created = datetime.now(timezone.utc).isoformat()
-        with sqlite3.connect(self.database_path) as db:
-            db.execute("INSERT INTO approvals (id, project_id, action, description, status, created_at, resolved_at, fingerprint) VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?)", (approval_id, project_id, action, description, created, fingerprint))
+        with sqlite3.connect(self.database_path, timeout=10.0) as db:
+            db.execute("BEGIN IMMEDIATE")
+            if fingerprint:
+                row = db.execute(
+                    "SELECT * FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed') ORDER BY created_at DESC LIMIT 1",
+                    (project_id, fingerprint),
+                ).fetchone()
+                if row:
+                    columns = [item[1] for item in db.execute("PRAGMA table_info(approvals)").fetchall()]
+                    return dict(zip(columns, row))
+            approval_id = str(uuid4())
+            try:
+                db.execute(
+                    "INSERT INTO approvals (id, project_id, action, description, status, created_at, resolved_at, fingerprint) VALUES (?, ?, ?, ?, 'pending', ?, NULL, ?)",
+                    (approval_id, project_id, action, description, created, fingerprint),
+                )
+            except sqlite3.IntegrityError:
+                if not fingerprint:
+                    raise
+                row = db.execute(
+                    "SELECT * FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed') ORDER BY created_at DESC LIMIT 1",
+                    (project_id, fingerprint),
+                ).fetchone()
+                if not row:
+                    raise
+                columns = [item[1] for item in db.execute("PRAGMA table_info(approvals)").fetchall()]
+                return dict(zip(columns, row))
         return self.get_approval(approval_id)  # type: ignore[return-value]
 
     def get_approval(self, approval_id: str) -> dict[str, object] | None:
@@ -65,7 +92,7 @@ class ActivityStore:
         if status not in {"approved", "rejected"}:
             raise ValueError("وضعیت تأیید باید approved یا rejected باشد.")
         resolved = datetime.now(timezone.utc).isoformat()
-        with sqlite3.connect(self.database_path) as db:
+        with sqlite3.connect(self.database_path, timeout=10.0) as db:
             cursor = db.execute("UPDATE approvals SET status=?, resolved_at=? WHERE id=? AND status='pending'", (status, resolved, approval_id))
             if cursor.rowcount == 0:
                 return None
