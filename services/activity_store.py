@@ -16,13 +16,25 @@ class ActivityStore:
     def __init__(self, database_path: str = "data/platform.db") -> None:
         self.database_path = database_path
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(database_path) as db:
+        with sqlite3.connect(database_path, timeout=10.0) as db:
             db.execute("CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, event_type TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS approvals (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, action TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, resolved_at TEXT, fingerprint TEXT)")
             columns = {row[1] for row in db.execute("PRAGMA table_info(approvals)").fetchall()}
             if "fingerprint" not in columns:
                 db.execute("ALTER TABLE approvals ADD COLUMN fingerprint TEXT")
-            db.execute("CREATE INDEX IF NOT EXISTS idx_approvals_project_fingerprint ON approvals(project_id, fingerprint)")
+            duplicates = db.execute(
+                "SELECT project_id, fingerprint FROM approvals WHERE fingerprint IS NOT NULL AND status IN ('pending','approved','claimed') GROUP BY project_id, fingerprint HAVING COUNT(*) > 1"
+            ).fetchall()
+            for project_id, fingerprint in duplicates:
+                rows = db.execute(
+                    "SELECT id FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed') ORDER BY created_at DESC, id DESC",
+                    (project_id, fingerprint),
+                ).fetchall()
+                for (approval_id,) in rows[1:]:
+                    db.execute("UPDATE approvals SET status='rejected', resolved_at=? WHERE id=?", (datetime.now(timezone.utc).isoformat(), approval_id))
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_active_approval_fingerprint ON approvals(project_id, fingerprint) WHERE fingerprint IS NOT NULL AND status IN ('pending','approved','claimed')"
+            )
 
     def add(self, project_id: str, event_type: str, message: str) -> dict[str, object]:
         """یک رویداد را در Activity ثبت می‌کند."""
