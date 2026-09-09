@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from api.app import create_manager_app
+from services.project_store import ProjectStore
 
 
 @pytest.fixture()
@@ -46,6 +47,24 @@ def test_project_isolation_returns_404_for_other_owner(auth_env):
     project_id = created.get_json()["id"]
     assert client.get(f"/api/project/{project_id}", headers=auth_env["viewer"]).status_code == 404
     assert client.get(f"/api/project/{project_id}", headers=auth_env["admin"]).status_code == 200
+
+
+def test_store_get_enforces_owner_scope_inside_request(auth_env, tmp_path):
+    app = create_manager_app()
+    app.config["TESTING"] = True
+    store = ProjectStore(str(tmp_path / "platform.db"))
+    created = store.create(name="store-scope", description="x", request="x", owner_id="manager-operator")
+    project_id = str(created["id"])
+    with app.test_request_context("/api/projects", headers=auth_env["viewer"]):
+        from api.auth import authenticate
+        from flask import g
+        g.principal = authenticate()
+        assert store.get(project_id) is None
+    with app.test_request_context("/api/projects", headers=auth_env["operator"]):
+        from api.auth import authenticate
+        from flask import g
+        g.principal = authenticate()
+        assert store.get(project_id)["owner_id"] == "manager-operator"
 
 
 def test_route_endpoint_preserves_unauthenticated_contract(auth_env):
