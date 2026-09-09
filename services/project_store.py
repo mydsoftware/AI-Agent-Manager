@@ -76,6 +76,18 @@ class ProjectStore:
             return None, True
         return (None, True) if principal.role == "admin" else (principal.subject, False)
 
+    @staticmethod
+    def _request_owner_filter() -> str | None:
+        """مالک پروژه را در HTTP برای defense-in-depth برمی‌گرداند؛ خارج از HTTP فیلتر نمی‌کند."""
+        try:
+            from api.auth import current_principal
+            principal = current_principal()
+        except (RuntimeError, ImportError):
+            principal = None
+        if principal is None or principal.role == "admin":
+            return None
+        return principal.subject
+
     def create(self, *, name: str, description: str, request: str,
                project_type: str = "website", is_private: bool = True,
                owner_id: str = "system") -> dict[str, object]:
@@ -92,9 +104,16 @@ class ProjectStore:
         return self.get(project_id)  # type: ignore[return-value]
 
     def get(self, project_id: str) -> dict[str, object] | None:
-        """یک پروژه را بر اساس شناسه می‌خواند."""
+        """یک پروژه را می‌خواند و در درخواست غیرادمین فقط پروژه مالک جاری را برمی‌گرداند."""
+        owner_id = self._request_owner_filter()
         with self._connect() as connection:
-            row = connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            if owner_id is None:
+                row = connection.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            else:
+                row = connection.execute(
+                    "SELECT * FROM projects WHERE id = ? AND owner_id = ?",
+                    (project_id, owner_id),
+                ).fetchone()
         if row is None:
             return None
         result = dict(row)
@@ -107,8 +126,15 @@ class ProjectStore:
         normalized = status.strip().lower()
         if normalized not in allowed:
             raise ValueError(f"وضعیت نامعتبر پروژه: {status}")
+        owner_id = self._request_owner_filter()
         with self._connect() as connection:
-            cursor = connection.execute("UPDATE projects SET status = ? WHERE id = ?", (normalized, project_id))
+            if owner_id is None:
+                cursor = connection.execute("UPDATE projects SET status = ? WHERE id = ?", (normalized, project_id))
+            else:
+                cursor = connection.execute(
+                    "UPDATE projects SET status = ? WHERE id = ? AND owner_id = ?",
+                    (normalized, project_id, owner_id),
+                )
             if cursor.rowcount == 0:
                 return None
         return self.get(project_id)
