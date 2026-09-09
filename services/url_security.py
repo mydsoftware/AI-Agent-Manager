@@ -122,7 +122,10 @@ def request_public_http(
                 headers=request_headers,
                 timeout=timeout,
                 allow_redirects=False,
-                stream=True,
+                # Keep the returned response independent from the Session lifecycle.
+                # This prevents callers from receiving a response whose streaming
+                # connection pool has already been closed in the finally block.
+                stream=False,
             )
             if response.status_code not in {301, 302, 303, 307, 308}:
                 return response
