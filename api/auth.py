@@ -191,7 +191,7 @@ def install_api_auth(app: Flask) -> None:
             return jsonify({"error": "برای مشاهده Approvalها باید project_id مشخص شود."}), 403
 
         if request.path.startswith(("/api/memory", "/api/knowledge", "/api/agent-logs")):
-            if request.path.count("/") >= 4 and re.search(r"/(\d+)$", request.path):
+            if re.search(r"^/api/(memory|knowledge)/\d+$", request.path):
                 allowed, error = _check_resource_id_scope(request.path)
             else:
                 scoped_project, needs_scope = _scoped_resource_project_id(request.path)
