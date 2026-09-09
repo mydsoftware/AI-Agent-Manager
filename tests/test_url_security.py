@@ -1,7 +1,9 @@
 import socket
 
+import pytest
+
 from services.browser_qa import BrowserQA
-from services.url_security import validate_public_http_url
+from services.url_security import request_public_http, validate_public_http_url
 
 
 def test_dns_resolution_to_private_address_is_rejected(monkeypatch):
@@ -56,3 +58,19 @@ def test_browser_request_guard_aborts_private_redirect_target():
 
     assert route.aborted is True
     assert route.continued is False
+
+
+def test_sensitive_headers_require_https(monkeypatch):
+    """Headerهای حساس نباید حتی در اولین Hop روی HTTP ارسال شوند."""
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 80))],
+    )
+
+    with pytest.raises(ValueError, match="HTTPS"):
+        request_public_http(
+            "http://example.test/health",
+            headers={"X-AI-Agent-Token": "secret-token"},
+            sensitive_headers={"X-AI-Agent-Token"},
+        )
