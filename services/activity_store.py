@@ -27,7 +27,8 @@ class ActivityStore:
             ).fetchall()
             for project_id, fingerprint in duplicates:
                 rows = db.execute(
-                    "SELECT id FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed') ORDER BY created_at DESC, id DESC",
+                    "SELECT id FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed')"
+                    " ORDER BY CASE status WHEN 'claimed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC, id DESC",
                     (project_id, fingerprint),
                 ).fetchall()
                 for (approval_id,) in rows[1:]:
@@ -57,7 +58,8 @@ class ActivityStore:
             db.execute("BEGIN IMMEDIATE")
             if fingerprint:
                 row = db.execute(
-                    "SELECT * FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed') ORDER BY created_at DESC LIMIT 1",
+                    "SELECT * FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed')"
+                    " ORDER BY CASE status WHEN 'claimed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC LIMIT 1",
                     (project_id, fingerprint),
                 ).fetchone()
                 if row:
@@ -73,7 +75,8 @@ class ActivityStore:
                 if not fingerprint:
                     raise
                 row = db.execute(
-                    "SELECT * FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed') ORDER BY created_at DESC LIMIT 1",
+                    "SELECT * FROM approvals WHERE project_id=? AND fingerprint=? AND status IN ('pending','approved','claimed')"
+                    " ORDER BY CASE status WHEN 'claimed' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, created_at DESC LIMIT 1",
                     (project_id, fingerprint),
                 ).fetchone()
                 if not row:
