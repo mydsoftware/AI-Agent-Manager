@@ -23,21 +23,36 @@ def test_browser_request_guard_aborts_private_redirect_target():
     class FakeRequest:
         def __init__(self, url):
             self.url = url
+
+    class FakeRoute:
+        def __init__(self, request):
+            self.request = request
             self.aborted = False
+            self.continued = False
 
         def abort(self):
             self.aborted = True
 
+        def continue_(self):
+            self.continued = True
+
     class FakePage:
         def __init__(self):
+            self.pattern = None
             self.handler = None
 
-        def on(self, event, handler):
-            assert event == "request"
+        def route(self, pattern, handler):
+            self.pattern = pattern
             self.handler = handler
 
     page = FakePage()
     BrowserQA()._guard_requests(page)
-    request = FakeRequest("http://127.0.0.1:8080/internal")
-    page.handler(request)
-    assert request.aborted is True
+
+    assert page.pattern == "**/*"
+    assert page.handler is not None
+
+    route = FakeRoute(FakeRequest("http://127.0.0.1:8080/internal"))
+    page.handler(route)
+
+    assert route.aborted is True
+    assert route.continued is False
