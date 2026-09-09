@@ -85,6 +85,11 @@ def request_public_http(
     """درخواست HTTP(S) را با DNS pinning، Redirect validation و کنترل Credential اجرا می‌کند."""
     current = validate_public_http_url(url)
     initial = urlparse(current)
+    protected_headers = {item.lower() for item in (sensitive_headers or set())}
+    protected_headers.update({"authorization", "proxy-authorization", "cookie"})
+    if protected_headers and initial.scheme.lower() != "https":
+        raise ValueError("ارسال Header حساس فقط روی HTTPS مجاز است.")
+
     session = requests.Session()
     try:
         for _ in range(max_redirects + 1):
@@ -106,10 +111,8 @@ def request_public_http(
                 and port == (initial.port or (443 if initial.scheme == "https" else 80))
             )
             if not same_origin:
-                protected = {"authorization", "proxy-authorization", "cookie"}
-                protected.update(item.lower() for item in (sensitive_headers or set()))
                 request_headers = {
-                    key: value for key, value in request_headers.items() if key.lower() not in protected
+                    key: value for key, value in request_headers.items() if key.lower() not in protected_headers
                 }
                 request_headers["Host"] = host if parsed.port is None else f"{host}:{parsed.port}"
 
