@@ -31,6 +31,7 @@ class WordPressConnectionTester:
     def test(self, config: WordPressConnectionConfig) -> WordPressConnectionCheck:
         """اتصال را با درخواست OPTIONS امن و DNS-pinned بررسی می‌کند."""
         endpoint = config.site_url.rstrip("/") + "/wp-json/ai-agent-manager/v1/seo/canonical"
+        response = None
         try:
             response = request_public_http(
                 endpoint,
@@ -55,3 +56,9 @@ class WordPressConnectionTester:
             return WordPressConnectionCheck(False, False, False, f"اتصال به سایت برقرار نشد: {exc}")
         except Exception as exc:
             return WordPressConnectionCheck(False, False, False, f"خطای بررسی اتصال: {exc}")
+        finally:
+            if response is not None:
+                try:
+                    response.close()
+                except Exception:
+                    pass
