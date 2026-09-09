@@ -49,24 +49,9 @@ class BrowserQA:
             continue_request()
 
     def _guard_requests(self, page: Any) -> None:
-        """در صورت نبود Route API، Request event را به‌عنوان دفاع عمقی کنترل می‌کند."""
+        """Route interception را به‌عنوان کنترل قابل‌اعتماد egress فعال می‌کند."""
         if hasattr(page, "route"):
             page.route("**/*", self._guard_route)
-            return
-        if not hasattr(page, "on"):
-            return
-
-        def guard(request: Any) -> None:
-            """Request مرورگر را اعتبارسنجی و در صورت ناامن بودن متوقف می‌کند."""
-            request_url = self._request_url(request)
-            try:
-                validate_public_http_url(request_url)
-            except ValueError:
-                abort = getattr(request, "abort", None)
-                if callable(abort):
-                    abort()
-
-        page.on("request", guard)
 
     @staticmethod
     def _new_page_with_service_workers_blocked(browser: Any) -> tuple[Any, Any]:
