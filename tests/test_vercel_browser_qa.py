@@ -31,6 +31,19 @@ def test_browser_qa_requires_http_url():
 
 
 def test_browser_qa_blocks_local_targets():
+    """ورودی اصلی QA باید مقصدهای محلی را قبل از Browser/Navigation رد کند."""
+    qa = BrowserQA()
+    for url in ("http://127.0.0.1:8080", "http://localhost:3000", "http://10.0.0.1"):
+        try:
+            qa.run_smoke(url)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"باید مقصد محلی رد شود: {url}")
+
+
+def test_public_url_validator_rejects_local_targets():
+    """Validator مستقل نیز باید برای تست واحد URL security پوشش داده شود."""
     for url in ("http://127.0.0.1:8080", "http://localhost:3000", "http://10.0.0.1"):
         try:
             validate_public_http_url(url)
