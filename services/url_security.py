@@ -4,11 +4,24 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3 import PoolManager
+
+
+@dataclass(frozen=True)
+class PublicHTTPResponse:
+    """متادیتای محدود پاسخ connectivity probe بدون نگه‌داشتن اتصال شبکه."""
+
+    status_code: int
+    headers: dict[str, str]
+
+    def close(self) -> None:
+        """برای سازگاری با مصرف‌کننده‌ها؛ اتصال پیش از بازگشت بسته شده است."""
+        return None
 
 
 def _resolve_public_addresses(host: str, port: int) -> list[ipaddress._BaseAddress]:
@@ -81,8 +94,8 @@ def request_public_http(
     sensitive_headers: set[str] | None = None,
     timeout: int = 15,
     max_redirects: int = 3,
-) -> requests.Response:
-    """درخواست HTTP(S) را با DNS pinning، Redirect validation و کنترل Credential اجرا می‌کند."""
+) -> PublicHTTPResponse:
+    """درخواست HTTP(S) را با DNS pinning، Redirect validation و lifecycle امن پاسخ اجرا می‌کند."""
     current = validate_public_http_url(url)
     initial = urlparse(current)
     protected_headers = {item.lower() for item in (sensitive_headers or set())}
@@ -100,10 +113,7 @@ def request_public_http(
             adapter = _PinnedHostAdapter(host, ip)
             session.mount(f"{parsed.scheme}://", adapter)
             request_headers = dict(headers or {})
-            if parsed.port is None:
-                request_headers["Host"] = host
-            else:
-                request_headers["Host"] = f"{host}:{parsed.port}"
+            request_headers["Host"] = host if parsed.port is None else f"{host}:{parsed.port}"
 
             same_origin = (
                 parsed.scheme.lower() == initial.scheme.lower()
@@ -122,16 +132,17 @@ def request_public_http(
                 headers=request_headers,
                 timeout=timeout,
                 allow_redirects=False,
-                # Keep the returned response independent from the Session lifecycle.
-                # This prevents callers from receiving a response whose streaming
-                # connection pool has already been closed in the finally block.
-                stream=False,
+                stream=True,
             )
             if response.status_code not in {301, 302, 303, 307, 308}:
-                return response
+                result = PublicHTTPResponse(response.status_code, dict(response.headers))
+                response.close()
+                return result
             location = response.headers.get("Location")
             if not location:
-                return response
+                result = PublicHTTPResponse(response.status_code, dict(response.headers))
+                response.close()
+                return result
             next_url = validate_public_http_url(urljoin(current, location))
             response.close()
             current = next_url
