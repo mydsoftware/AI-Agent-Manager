@@ -40,6 +40,24 @@ class DeploymentOrchestrator:
         self.loop = AutonomousDeploymentLoop(max_attempts=max_attempts)
         self.max_attempts = max_attempts
 
+    @staticmethod
+    def _extract_commit_sha(value: Any) -> str:
+        """SHA جدید Commit را فقط از خروجی ساختاریافته Agent استخراج می‌کند."""
+        if isinstance(value, dict):
+            for key in ("commit_sha", "head_sha", "sha"):
+                candidate = str(value.get(key, "")).strip()
+                if candidate:
+                    return candidate
+            nested = value.get("result")
+            if nested is not value:
+                return DeploymentOrchestrator._extract_commit_sha(nested)
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                candidate = DeploymentOrchestrator._extract_commit_sha(item)
+                if candidate:
+                    return candidate
+        return ""
+
     def run(
         self,
         context: DeploymentContext,
@@ -54,6 +72,7 @@ class DeploymentOrchestrator:
         current_context = context
 
         def fix_failure(failure: dict[str, Any], source: str) -> bool:
+            nonlocal current_context
             payload = {
                 "status": "failed",
                 "source": source,
@@ -61,6 +80,11 @@ class DeploymentOrchestrator:
                 "ci_failure": failure if source == "github_actions" else {},
             }
             result = adapter.execute_fix(current_context, payload)
+            new_sha = self._extract_commit_sha(result)
+            if not new_sha:
+                # اگر Agent هنوز SHA را برنگرداند، همان Context معتبر قبلی حفظ می‌شود.
+                new_sha = current_context.commit_sha
+            current_context = replace(current_context, commit_sha=new_sha)
             return adapter.can_retry(result)
 
         if self.ci_monitor is not None and owner and repository:
@@ -99,7 +123,11 @@ class DeploymentOrchestrator:
             return result.get("status") == "failed"
 
         def fix_and_commit(result: dict[str, Any]) -> bool:
+            nonlocal current_context
             fix_result = adapter.execute_fix(current_context, result)
+            new_sha = self._extract_commit_sha(fix_result)
+            if new_sha:
+                current_context = replace(current_context, commit_sha=new_sha)
             return adapter.can_retry(fix_result)
 
         result = self.loop.run(
@@ -160,10 +188,12 @@ class DeploymentOrchestrator:
             results = self.executor.run([task])
             if task.status.value != "success":
                 return {"status": "failed", "error": task.error or "Fix task failed"}
+            commit_sha = self._extract_commit_sha(task.result) or self._extract_commit_sha(results)
             return {
                 "status": "committed" if results else "fixed",
                 "task_id": task.id,
                 "result": task.result,
+                "commit_sha": commit_sha,
             }
         except Exception as error:
             return {"status": "failed", "error": str(error), "task_id": task.id}
