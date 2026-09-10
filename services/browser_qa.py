@@ -24,10 +24,12 @@ class BrowserQA:
         self,
         browser_factory: Callable[[], Any] | None = None,
         egress_proxy: str | None = None,
+        require_egress_proxy: bool = False,
     ) -> None:
-        """Factory مرورگر و در صورت نیاز Proxy شبکه خروجی را نگه می‌دارد."""
+        """Factory مرورگر و Proxy شبکه خروجی را نگه می‌دارد؛ در حالت fail-closed Proxy الزامی است."""
         self.browser_factory = browser_factory
         self.egress_proxy = egress_proxy
+        self.require_egress_proxy = require_egress_proxy
 
     def validate_url(self, url: str) -> str:
         """URL مقصد QA را فقط در صورت HTTP(S) و عمومی بودن Host تأیید می‌کند."""
@@ -54,12 +56,12 @@ class BrowserQA:
             continue_request()
 
     def _guard_requests(self, page: Any) -> None:
-        """Route interception را به‌عنوان کنترل قابل‌اعتماد egress فعال می‌کند."""
+        """Route interception را به‌عنوان دفاع در عمق egress فعال می‌کند."""
         if hasattr(page, "route"):
             page.route("**/*", self._guard_route)
 
     def _new_page_with_controls(self, browser: Any) -> tuple[Any, Any]:
-        """Context مرورگر را با Service Worker blocking و Proxy اختیاری ایجاد می‌کند."""
+        """Context مرورگر را با Service Worker blocking و Proxy شبکه ایجاد می‌کند."""
         new_context = getattr(browser, "new_context", None)
         if not callable(new_context):
             return browser, browser.new_page()
@@ -70,10 +72,23 @@ class BrowserQA:
         return context, context.new_page()
 
     def run_smoke(self, url: str) -> dict[str, Any]:
-        """یک Smoke Test محدود اجرا می‌کند و نتیجه بررسی بارگذاری و عنوان صفحه را برمی‌گرداند."""
+        """Smoke Test را اجرا می‌کند و در محیط production بدون egress proxy به‌صورت fail-closed متوقف می‌کند."""
         target = self.validate_url(url)
         if self.browser_factory is None:
             return {"url": target, "status": "not_configured", "checks": []}
+        if self.require_egress_proxy and not self.egress_proxy:
+            return {
+                "url": target,
+                "status": "failed",
+                "checks": [
+                    {
+                        "name": "network_egress",
+                        "passed": False,
+                        "details": "Browser QA برای اجرای ایمن به Egress Proxy نیاز دارد.",
+                    }
+                ],
+                "network_egress": "required_proxy_not_configured",
+            }
 
         browser = self.browser_factory()
         context = None
