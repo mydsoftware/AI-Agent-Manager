@@ -100,6 +100,65 @@ def test_browser_qa_creates_context_with_service_workers_blocked(monkeypatch):
     assert browser.kwargs == {"service_workers": "block"}
 
 
+def test_browser_qa_fails_closed_without_network_proxy():
+    """Runtime production mode نباید Browser را بدون egress policy شبکه اجرا کند."""
+    called = []
+
+    def browser_factory():
+        called.append(True)
+        raise AssertionError("browser نباید بدون proxy شبکه ساخته شود")
+
+    result = BrowserQA(browser_factory=browser_factory, require_egress_proxy=True).run_smoke("https://example.com")
+    assert result["status"] == "failed"
+    assert result["network_egress"] == "required_proxy_not_configured"
+    assert called == []
+
+
+def test_browser_qa_uses_configured_network_proxy(monkeypatch):
+    """وقتی Proxy تنظیم شده، BrowserContext باید Proxy و Service Worker blocking را دریافت کند."""
+    monkeypatch.setattr("services.browser_qa.validate_public_http_url", lambda url: url)
+
+    class FakePage:
+        def route(self, *_args):
+            pass
+
+        def goto(self, *_args, **_kwargs):
+            return type("Response", (), {"status": 200})()
+
+        def title(self):
+            return "QA"
+
+    class FakeContext:
+        def new_page(self):
+            return FakePage()
+
+        def close(self):
+            pass
+
+    class FakeBrowser:
+        def __init__(self):
+            self.kwargs = None
+
+        def new_context(self, **kwargs):
+            self.kwargs = kwargs
+            return FakeContext()
+
+        def close(self):
+            pass
+
+    browser = FakeBrowser()
+    result = BrowserQA(
+        browser_factory=lambda: browser,
+        egress_proxy="http://127.0.0.1:18080",
+        require_egress_proxy=True,
+    ).run_smoke("https://example.com")
+    assert result["status"] == "passed"
+    assert browser.kwargs == {
+        "service_workers": "block",
+        "proxy": {"server": "http://127.0.0.1:18080"},
+    }
+
+
 def test_deployment_api_requires_authentication(monkeypatch):
     monkeypatch.setenv("MANAGER_API_TOKEN", "test-manager-token")
     from flask import Flask
