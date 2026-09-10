@@ -1,20 +1,18 @@
-from __future__ import annotations
-
 from manager.loop import AgenticLoop
 from manager.task import Task
 from manager.task_status import TaskStatus
 
 
 class TaskExecutor:
-    """وظایف را با رعایت وابستگی‌ها و تلاش مجدد اجرا می‌کند."""
+    """وظایف را با رعایت وابستگی‌ها، Resume و تلاش مجدد اجرا می‌کند."""
 
     def __init__(self, loop: AgenticLoop) -> None:
         self.loop = loop
 
     def run(self, tasks: list[Task]) -> list[str]:
-        """Task Graph را تا تکمیل، شکست یا انسداد اجرا می‌کند."""
-        remaining = {task.id: task for task in tasks}
-        known = dict(remaining)
+        """Task Graph را تا تکمیل، شکست یا انسداد اجرا می‌کند و Task موفق را دوباره اجرا نمی‌کند."""
+        remaining = {task.id: task for task in tasks if task.status != TaskStatus.SUCCESS}
+        known = dict(tasks_by_id := {task.id: task for task in tasks})
         results: list[str] = []
         if len(known) != len(tasks):
             raise ValueError("شناسه Taskها باید یکتا باشند.")
