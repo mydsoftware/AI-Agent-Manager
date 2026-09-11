@@ -5,11 +5,23 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-agent-manager-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PLAYWRIGHT_BROWSERS_PATH: ~/.cache/ms-playwright
+
 jobs:
   test:
+    name: تست کامل
     runs-on: ubuntu-latest
-    env:
-      PYTHONUNBUFFERED: "1"
+    timeout-minutes: 30
     steps:
       - name: دریافت کد پروژه
         uses: actions/checkout@v4
@@ -17,17 +29,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - name: نصب وابستگی‌ها
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: کش مرورگرهای Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - name: نصب وابستگی‌های سیستمی Chromium
+        run: python -m playwright install-deps chromium
       - name: نصب Chromium برای Playwright
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install chromium
       - name: اجرای همه آزمون‌ها
-        run: pytest -q
+        run: python -m pytest -q
 
   package:
+    name: اعتبارسنجی و بسته‌بندی
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: test
     steps:
       - name: دریافت کد پروژه
@@ -36,28 +60,48 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - name: نصب وابستگی‌ها
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: کش مرورگرهای Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - name: نصب وابستگی‌های سیستمی Chromium
+        run: python -m playwright install-deps chromium
       - name: نصب Chromium برای Playwright
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install chromium
       - name: آماده‌سازی پکیج قابل انتشار
         run: |
+          set -euo pipefail
           rm -rf dist artifact-test
-          mkdir -p dist/AI-Agent-Manager-v1.0.1
-          rsync -a --exclude='.git' --exclude='dist' --exclude='AI-Agent-Manager-v1.0.1.zip' ./ dist/AI-Agent-Manager-v1.0.1/
+          mkdir -p dist/AI-Agent-Manager
+          rsync -a --exclude='.git' --exclude='dist' --exclude='artifact-test' --exclude='*.zip' ./ dist/AI-Agent-Manager/
       - name: تست پکیج قبل از انتشار
         run: |
+          set -euo pipefail
           rm -rf artifact-test
-          mkdir artifact-test
-          cp -a dist/AI-Agent-Manager-v1.0.1 artifact-test/AI-Agent-Manager-v1.0.1
-          cd artifact-test/AI-Agent-Manager-v1.0.1
+          mkdir -p artifact-test
+          cp -a dist/AI-Agent-Manager artifact-test/AI-Agent-Manager
+          cd artifact-test/AI-Agent-Manager
           python -m compileall -q .
-          pytest -q
+          python -m pytest -q
+      - name: محاسبه SHA-256 بسته
+        run: |
+          set -euo pipefail
+          tar -C dist -czf /tmp/AI-Agent-Manager.tar.gz AI-Agent-Manager
+          sha256sum /tmp/AI-Agent-Manager.tar.gz | tee dist/AI-Agent-Manager-SHA256.txt
       - name: انتشار Artifact مستقیم
         uses: actions/upload-artifact@v4
         with:
-          name: AI-Agent-Manager-v1.0.1
-          path: dist/AI-Agent-Manager-v1.0.1
+          name: AI-Agent-Manager-${{ github.sha }}
+          path: |
+            dist/AI-Agent-Manager
+            dist/AI-Agent-Manager-SHA256.txt
           if-no-files-found: error
+          retention-days: 30

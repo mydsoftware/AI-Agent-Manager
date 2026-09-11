@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from api.agent_team_api import AgentTeamAPI
 from api.agent_logs_api import register_agent_logs_api
+from api.auth import install_api_auth
 from api.github_api import register_github_api
 from api.http import create_app
 from api.memory_knowledge_api import register_memory_knowledge_api
+from api.vercel_api import register_vercel_api
 from agents.wordpress_connection_http_api import WordPressConnectionHttpApi
 from runtime import ManagerRuntime
 
 
 def create_manager_app() -> object:
-    """برنامه اصلی را با وابستگی‌های واقعی در زمان اجرا می‌سازد."""
+    """برنامه اصلی را با وابستگی‌های واقعی و احراز هویت مرکزی می‌سازد."""
     runtime = ManagerRuntime()
     team_api = AgentTeamAPI(runtime.agent_team, runtime.registry_manager)
     wordpress_connection_api = WordPressConnectionHttpApi()
@@ -18,6 +20,8 @@ def create_manager_app() -> object:
     register_memory_knowledge_api(app, str(runtime.persistent_memory.database_path))
     register_agent_logs_api(app, str(runtime.persistent_memory.database_path))
     register_github_api(app)
+    register_vercel_api(app)
+    install_api_auth(app)
     return app
 
 
