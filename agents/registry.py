@@ -15,20 +15,27 @@ class SpecialistRegistry:
 
     def __init__(self) -> None:
         self._agents: Dict[str, Type[BaseAgent]] = {}
+        self._instances: Dict[str, BaseAgent] = {}
 
     def register(self, agent_class: Type[BaseAgent]) -> None:
         """یک ایجنت تخصصی را با نام آن ثبت می‌کند."""
         self._agents[agent_class.name] = agent_class
 
+    def register_instance(self, agent: BaseAgent) -> None:
+        """یک نمونه ایجنت را برای Dependency Injection ثبت می‌کند."""
+        self._instances[agent.name] = agent
+
     def get(self, name: str) -> BaseAgent:
         """یک نمونه از ایجنت موردنظر را برمی‌گرداند."""
+        if name in self._instances:
+            return self._instances[name]
         if name not in self._agents:
             raise KeyError(f"ایجنت ثبت‌شده‌ای با نام «{name}» وجود ندارد.")
         return self._agents[name]()
 
     def names(self) -> list[str]:
         """نام تمام ایجنت‌های ثبت‌شده را برمی‌گرداند."""
-        return sorted(self._agents)
+        return sorted(set(self._agents) | set(self._instances))
 
 
 def create_default_registry() -> SpecialistRegistry:
