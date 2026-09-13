@@ -71,21 +71,33 @@ class LLMGateway:
         if prepared.compacted:
             self.stats["context_reductions"] += 1
 
-        candidates = [model]
-        if self.fallback_model and self.fallback_model != model:
-            candidates.append(self.fallback_model)
-
         last_error: Exception | None = None
-        for candidate_index, candidate in enumerate(candidates):
+        for candidate_index, candidate in enumerate(self._fallback_candidates(model)):
             try:
                 return self._complete_model(current_messages, candidate, temperature=temperature, max_tokens=max_tokens)
             except LLMError as exc:
                 last_error = exc
-                if candidate_index + 1 < len(candidates):
+                if candidate_index + 1 < len(self._fallback_candidates(model)):
                     self.stats["fallbacks"] += 1
                     continue
                 raise
         raise LLMError(f"LLM request failed: {last_error}") from last_error
+
+    def _fallback_candidates(self, model: str) -> list[str]:
+        """مدل اصلی و fallbackهای مناسب را بدون تکرار برمی‌گرداند."""
+        candidates = [model]
+        env_key = None
+        if "vl" in model.lower() or "vision" in model.lower():
+            env_key = "LLM_FALLBACK_MODEL_VISION"
+        elif "coder" in model.lower() or "code" in model.lower():
+            env_key = "LLM_FALLBACK_MODEL_CODER"
+        else:
+            env_key = "LLM_FALLBACK_MODEL_GENERAL"
+
+        fallback = os.getenv(env_key) or self.fallback_model
+        if fallback and fallback not in candidates:
+            candidates.append(fallback)
+        return candidates
 
     def _complete_model(
         self,
