@@ -3,6 +3,7 @@ from __future__ import annotations
 from manager.context import AgentContext
 from manager.correction_loop import CorrectionLoop
 from manager.decision import DecisionEngine
+from manager.intent_router import IntentRouter
 from manager.intention import IntentParser
 from manager.memory import Memory
 from manager.multi_plan import MultiAgentPlanner
@@ -17,6 +18,7 @@ class ManagerOrchestrator:
 
     def __init__(self, memory: Memory | None = None) -> None:
         self.intent_parser = IntentParser()
+        self.intent_router = IntentRouter()
         self.decision_engine = DecisionEngine()
         self.multi_agent_planner = MultiAgentPlanner()
         self.replanner = DynamicReplanner(self.multi_agent_planner)
@@ -24,18 +26,27 @@ class ManagerOrchestrator:
         self.supervisor = Supervisor()
 
     def execute(self, request: str, executor: TaskExecutor, agent: str | None = None) -> ManagerReport:
-        """درخواست را تحلیل، اجرا و در زمان اجرا در صورت نیاز بازطراحی می‌کند."""
+        """درخواست را تحلیل، route، اجرا و در زمان اجرا در صورت نیاز بازطراحی می‌کند."""
+        route = self.intent_router.classify(request)
         intent = self.intent_parser.parse(request)
         decision = self.decision_engine.decide(intent)
+
         if agent:
             decision.agent = agent
             decision.reason = "ایجنت توسط درخواست‌کننده مشخص شده است."
             decision.confidence = 1.0
+        elif route.role != "developer":
+            decision.agent = route.role
+            decision.reason = f"IntentRouter: {route.intent} / capability={route.capability}"
+            decision.confidence = max(decision.confidence, 0.8)
+
         intent.agent = decision.agent
         self.memory.add("تصمیم Manager", {
             "agent": decision.agent,
             "reason": decision.reason,
             "confidence": decision.confidence,
+            "intent": route.intent,
+            "capability": route.capability,
         })
 
         context = AgentContext()
