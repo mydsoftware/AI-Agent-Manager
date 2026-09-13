@@ -9,7 +9,7 @@ class ManagerAPI:
     def __init__(self, runtime: ManagerRuntime | None = None) -> None:
         self.runtime = runtime or ManagerRuntime()
 
-    def execute(self, request: str, agent: str = "developer") -> dict:
+    def execute(self, request: str, agent: str | None = None) -> dict:
         """درخواست را اجرا می‌کند و گزارش ساختاریافته برمی‌گرداند."""
         if not request.strip():
             raise ValueError("درخواست نمی‌تواند خالی باشد.")
@@ -21,6 +21,6 @@ class ManagerAPI:
 _manager_api = ManagerAPI()
 
 
-def execute(request: str, agent: str = "developer") -> dict:
-    """تابع عمومی اجرای Manager."""
+def execute(request: str, agent: str | None = None) -> dict:
+    """تابع عمومی اجرای Manager با routing خودکار."""
     return _manager_api.execute(request, agent)
