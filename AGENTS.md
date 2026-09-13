@@ -26,16 +26,16 @@
 User Request
   -> ManagerRuntime
   -> Orchestrator
+  -> IntentRouter / MultiAgentPlanner
   -> TaskExecutor
   -> AgenticLoop
   -> Router / ModelRouter
   -> Specialist Agent
+  -> LLMGateway
+  -> OpenAI-compatible API / LM Studio
   -> Tool / GitHub / عملیات
   -> Memory / PersistentMemory
   -> ManagerReport
-
-LLM path:
-Agent -> LLMGateway -> OpenAI-compatible API -> LM Studio -> Local Model
 ```
 
 ## Model Routing
@@ -53,6 +53,9 @@ Routing باید capability-based باشد، نه صرفاً نام Agent.
 | embedding | text-embedding-nomic-embed-text-v1.5 |
 
 Environment overrides باید حفظ شوند: `LLM_MODEL_*` و `LLM_MODEL`.
+
+### قانون Vision
+درخواست‌هایی که `IntentRouter` آن‌ها را `vision` تشخیص می‌دهد نباید به‌خاطر کلمه عمومی «بررسی» به Research تبدیل شوند. `MultiAgentPlanner` باید Task با `agent=developer` و `capability=vision` بسازد تا ModelRouter مدل Vision را انتخاب کند. انتقال واقعی تصویر/اسکرین‌شات باید در لایه ورودی و plumbing مربوطه پشتیبانی شود؛ صرف انتخاب مدل Vision به معنی پردازش تصویر نیست.
 
 ## Context Manager
 هر درخواست LLM باید قبل از ارسال از Context Manager عبور کند.
@@ -74,6 +77,7 @@ Gateway مسئول این موارد است:
 - استخراج پاسخ استاندارد
 - health check
 - ثبت latency، success/failure و usage
+- fallback بر اساس نوع مدل: Vision / Coder / General
 
 Gateway نباید منطق routing یا orchestration را داخل خود داشته باشد.
 
@@ -86,29 +90,22 @@ Agent تخصصی باید:
 5. نتیجه قابل استفاده برای Agent بعدی برگرداند.
 6. failure را silent نکند.
 
-## Sprint بعدی — Intelligent Routing + Context + E2E
-این sprint باید حداقل این خروجی‌ها را داشته باشد:
-- Intent/task classification
-- capability-aware model routing
-- Context Manager با budget حدود 12K
-- compaction/truncation و recovery واقعی
-- logging مدل، latency و usage
-- اتصال امن Developer / Research / QA به Gateway
-- unit tests بدون نیاز به LM Studio
-- integration/E2E test اختیاری وقتی LM Studio در دسترس است
-- تست regression برای مسیرهای قبلی
-
 ## تست
 حداقل قبل از تحویل:
 ```powershell
 pytest -q
 ```
 
+تست‌های routing و Gateway باید بدون نیاز به LM Studio با mock/fake transport اجرا شوند. تست Gateway باید حداقل success، پاسخ نامعتبر، fallback، context retry، health و fallbackهای capability-aware را پوشش دهد.
+
 اگر پروژه command دیگری برای lint/typecheck دارد، آن را نیز اجرا کن.
 
 برای مسیرهای Node/Frontend موجود، build پروژه مربوطه را نیز اجرا کن.
 
 اگر LM Studio در دسترس است، health و یک inference واقعی با `qwen3.5-9b` را تست کن؛ اگر در دسترس نیست، تست‌های mock نباید شکست بخورند.
+
+## GitHub Actions
+Workflow اصلی `.github/workflows/ci.yml` با push، pull_request و workflow_dispatch اجرا می‌شود و دستور اصلی آن `pytest -q` است. صرف وجود workflow نشانه موفقیت نیست؛ پس از commit، وضعیت run و در صورت failure لاگ job بررسی و repair شود.
 
 ## Git
 Commitها کوتاه و معنی‌دار باشند، ترجیحاً Conventional Commits:
@@ -131,8 +128,10 @@ Commitها کوتاه و معنی‌دار باشند، ترجیحاً Conventio
 - regression قابل قبول باشد؛
 - context overflow مسیر اصلی را خراب نکند؛
 - routing مدل deterministic و قابل override باشد؛
+- fallback و retry تست شده باشند؛
 - لاگ‌های ضروری موجود باشند؛
 - مستندات مرتبط به‌روز باشند؛
+- CI با evidence واقعی سبز باشد؛
 - هیچ تغییر مستقیم روی `main` انجام نشده باشد.
 
 ## سبک توسعه برای OpenCode + Qwen3.5
