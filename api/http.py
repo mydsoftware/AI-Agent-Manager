@@ -17,15 +17,16 @@ MAX_REQUEST_LENGTH = int(os.getenv("AI_AGENT_MANAGER_MAX_REQUEST_LENGTH", "12000
 
 
 def create_app(
-    team_api: AgentTeamAPI,
+    team_api: AgentTeamAPI | None = None,
     runtime: ManagerRuntime | None = None,
     session_runtime: SessionRuntime | None = None,
     authenticator: APIAuthenticator | None = None,
 ) -> Flask:
-    """برنامه HTTP مدیریتی، Session و داشبورد کاربر را می‌سازد."""
+    """برنامه HTTP مدیریتی را با داشبورد و APIهای واقعی می‌سازد."""
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("AI_AGENT_MANAGER_MAX_BODY_BYTES", "1048576"))
     manager_runtime = runtime or ManagerRuntime()
+    manager_team_api = team_api or AgentTeamAPI(manager_runtime.agent_team, manager_runtime.registry_manager)
     user_runtime = session_runtime or SessionRuntime(runtime=manager_runtime)
     api_auth = authenticator or APIAuthenticator()
     app.register_blueprint(create_session_blueprint(user_runtime, authenticator=api_auth))
@@ -54,15 +55,21 @@ def create_app(
 
     @app.get("/api/agents")
     def list_agents():
-        return jsonify(team_api.list_agents())
+        return jsonify(manager_team_api.list_agents())
 
     @app.post("/api/agents/<name>/enable")
     def enable_agent(name: str):
-        return jsonify(team_api.enable(name))
+        try:
+            return jsonify(manager_team_api.enable(name))
+        except (KeyError, ValueError) as error:
+            return jsonify({"error": str(error)}), 404
 
     @app.post("/api/agents/<name>/disable")
     def disable_agent(name: str):
-        return jsonify(team_api.disable(name))
+        try:
+            return jsonify(manager_team_api.disable(name))
+        except (KeyError, ValueError) as error:
+            return jsonify({"error": str(error)}), 404
 
     @app.post("/api/run")
     def run_request():
@@ -82,3 +89,8 @@ def create_app(
         return jsonify({"status": "ok"})
 
     return app
+
+
+def create_default_app() -> Flask:
+    """نمونه آماده اجرا برای استفاده مستقیم توسط WSGI یا توسعه محلی."""
+    return create_app()
