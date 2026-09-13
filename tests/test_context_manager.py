@@ -18,3 +18,15 @@ def test_context_manager_compacts_old_messages() -> None:
     assert result.compacted is True
     assert result.messages[0]["role"] == "system"
     assert result.estimated_tokens <= 70
+
+
+def test_context_manager_bounds_oversized_system_message() -> None:
+    manager = ContextManager(max_tokens=80, reserve_tokens=10)
+    messages = [
+        {"role": "system", "content": "system-rules " * 200},
+        {"role": "user", "content": "latest request"},
+    ]
+    result = manager.prepare(messages)
+    assert result.compacted is True
+    assert result.estimated_tokens <= 70
+    assert "context truncated" in result.messages[0]["content"]
