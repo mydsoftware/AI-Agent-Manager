@@ -54,7 +54,7 @@ class DeveloperAgent(BaseAgent):
         if self.llm is None:
             return "وظیفه توسعه دریافت شد و برای تحلیل و پیاده‌سازی آماده است."
 
-        model = self.model_router.resolve("developer")
+        model = self.model_router.resolve("developer", capability=task.capability)
         response = self.llm.complete(
             [
                 {"role": "system", "content": "تو ایجنت توسعه نرم‌افزار AI-Agent-Manager هستی. پاسخ را عملی، دقیق و کوتاه بده و اگر نیاز به تغییر کد است، مراحل و فایل‌های درگیر را مشخص کن."},
