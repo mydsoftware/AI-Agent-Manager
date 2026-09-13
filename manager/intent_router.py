@@ -14,12 +14,12 @@ class IntentRouter:
     """طبقه‌بندی سبک درخواست برای انتخاب Agent و مدل محلی."""
 
     RULES = {
-        "vision": ("vision", "vision", "vision"),
-        "code": ("coding", "coder", "coder"),
-        "test": ("testing", "coding", "tester"),
-        "review": ("review", "coding", "reviewer"),
-        "research": ("research", "general", "researcher"),
-        "plan": ("planning", "general", "planner"),
+        "vision": ("vision", "vision", "developer"),
+        "code": ("coding", "coder", "developer"),
+        "test": ("testing", "coding", "qa"),
+        "review": ("review", "coding", "developer"),
+        "research": ("research", "general", "research"),
+        "plan": ("planning", "general", "developer"),
     }
 
     KEYWORDS = {
