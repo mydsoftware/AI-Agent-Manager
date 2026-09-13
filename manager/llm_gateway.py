@@ -8,6 +8,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from manager.context_manager import ContextManager
+
 
 class LLMError(RuntimeError):
     """خطای ارتباط یا پاسخ نامعتبر از LLM."""
@@ -23,19 +25,76 @@ class LLMResponse:
 
 
 class LLMGateway:
-    """Gateway سبک و بدون وابستگی برای APIهای OpenAI-compatible."""
+    """Gateway سبک و مقاوم برای APIهای OpenAI-compatible و مدل‌های محلی."""
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None, provider: str | None = None, timeout: float | None = None, max_retries: int | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        provider: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        context_manager: ContextManager | None = None,
+    ) -> None:
         self.base_url = (base_url or os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1")).rstrip("/")
         self.api_key = api_key or os.getenv("LLM_API_KEY", "lm-studio")
         self.provider = provider or os.getenv("LLM_PROVIDER", "lmstudio")
         self.timeout = timeout if timeout is not None else float(os.getenv("LLM_TIMEOUT", "120"))
         self.max_retries = max(0, max_retries if max_retries is not None else int(os.getenv("LLM_MAX_RETRIES", "2")))
-        self.stats: dict[str, int] = {"requests": 0, "success": 0, "failures": 0, "retries": 0, "context_reductions": 0}
+        self.context_manager = context_manager or ContextManager(
+            max_tokens=int(os.getenv("LLM_CONTEXT_TOKENS", "12288")),
+            reserve_tokens=int(os.getenv("LLM_CONTEXT_RESERVE_TOKENS", "1024")),
+        )
+        self.fallback_model = os.getenv("LLM_FALLBACK_MODEL", "qwen2.5-coder-7b")
+        self.stats: dict[str, int] = {
+            "requests": 0,
+            "success": 0,
+            "failures": 0,
+            "retries": 0,
+            "context_reductions": 0,
+            "fallbacks": 0,
+        }
 
-    def complete(self, messages: list[dict[str, Any]], model: str, *, temperature: float = 0.2, max_tokens: int | None = None) -> LLMResponse:
+    def complete(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        *,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+    ) -> LLMResponse:
         if not model:
             raise LLMError("مدل LLM مشخص نشده است.")
+
+        prepared = self.context_manager.prepare(messages)
+        current_messages = prepared.messages
+        if prepared.compacted:
+            self.stats["context_reductions"] += 1
+
+        candidates = [model]
+        if self.fallback_model and self.fallback_model != model:
+            candidates.append(self.fallback_model)
+
+        last_error: Exception | None = None
+        for candidate_index, candidate in enumerate(candidates):
+            try:
+                return self._complete_model(current_messages, candidate, temperature=temperature, max_tokens=max_tokens)
+            except LLMError as exc:
+                last_error = exc
+                if candidate_index + 1 < len(candidates):
+                    self.stats["fallbacks"] += 1
+                    continue
+                raise
+        raise LLMError(f"LLM request failed: {last_error}") from last_error
+
+    def _complete_model(
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        *,
+        temperature: float,
+        max_tokens: int | None,
+    ) -> LLMResponse:
         current_messages = list(messages)
         url = f"{self.base_url}/chat/completions"
         last_error: Exception | None = None
@@ -56,12 +115,18 @@ class LLMGateway:
                     data = json.loads(response.read().decode("utf-8"))
                 content = self._extract_content(data)
                 self.stats["success"] += 1
-                return LLMResponse(content=content, model=str(data.get("model") or model), provider=self.provider, latency_ms=int((time.perf_counter() - started) * 1000), usage=data.get("usage") or {})
+                return LLMResponse(
+                    content=content,
+                    model=str(data.get("model") or model),
+                    provider=self.provider,
+                    latency_ms=int((time.perf_counter() - started) * 1000),
+                    usage=data.get("usage") or {},
+                )
             except urllib.error.HTTPError as exc:
                 error_body = exc.read().decode("utf-8", errors="ignore")
                 last_error = LLMError(f"HTTP {exc.code}: {error_body[:500]}")
                 if self._is_context_error(error_body) and len(current_messages) > 1:
-                    current_messages = self._reduce_context(current_messages)
+                    current_messages = self.context_manager.prepare(current_messages).messages
                     self.stats["context_reductions"] += 1
                     self.stats["retries"] += 1
                     continue
@@ -81,15 +146,6 @@ class LLMGateway:
     def _is_context_error(text: str) -> bool:
         normalized = text.lower()
         return any(token in normalized for token in ("context length", "context window", "maximum context", "too many tokens", "exceeds available context"))
-
-    @staticmethod
-    def _reduce_context(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if len(messages) <= 2:
-            reduced = list(messages)
-            if len(reduced) == 2 and isinstance(reduced[1].get("content"), str):
-                reduced[1] = {**reduced[1], "content": reduced[1]["content"][-12000:]}
-            return reduced
-        return [messages[0], *messages[-3:]]
 
     @staticmethod
     def _extract_content(data: dict[str, Any]) -> str:
