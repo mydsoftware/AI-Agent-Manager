@@ -26,22 +26,43 @@ class ContextManager:
         chars = sum(len(str(m.get("content", ""))) + 16 for m in messages)
         return max(1, (chars + 3) // 4)
 
+    @staticmethod
+    def _trim_message(message: dict[str, Any], max_tokens: int) -> dict[str, Any]:
+        if max_tokens <= 0:
+            return {**message, "content": ""}
+        content = str(message.get("content", ""))
+        max_chars = max(1, max_tokens * 4 - 16)
+        if len(content) <= max_chars:
+            return dict(message)
+        return {**message, "content": content[:max_chars] + "\n[context truncated]"}
+
     def prepare(self, messages: list[dict[str, Any]]) -> ContextResult:
         budget = self.max_tokens - self.reserve_tokens
-        if self.estimate_tokens(messages) <= budget:
-            return ContextResult(messages=list(messages), estimated_tokens=self.estimate_tokens(messages), compacted=False)
+        estimated = self.estimate_tokens(messages)
+        if estimated <= budget:
+            return ContextResult(messages=list(messages), estimated_tokens=estimated, compacted=False)
 
         system = [m for m in messages if m.get("role") == "system"]
         rest = [m for m in messages if m.get("role") != "system"]
         kept: list[dict[str, Any]] = []
-        used = self.estimate_tokens(system)
+        used = 0
 
+        for message in system:
+            remaining = max(1, budget - used)
+            trimmed = self._trim_message(message, remaining)
+            cost = self.estimate_tokens([trimmed])
+            if used + cost > budget:
+                break
+            kept.append(trimmed)
+            used += cost
+
+        kept_rest: list[dict[str, Any]] = []
         for message in reversed(rest):
             cost = self.estimate_tokens([message])
             if used + cost > budget:
                 continue
-            kept.append(message)
+            kept_rest.append(message)
             used += cost
 
-        result = system + list(reversed(kept))
+        result = kept + list(reversed(kept_rest))
         return ContextResult(messages=result, estimated_tokens=self.estimate_tokens(result), compacted=True)
