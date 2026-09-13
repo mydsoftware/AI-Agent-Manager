@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from api.agent_team_api import AgentTeamAPI
 from api.http import create_app
 from runtime import ManagerRuntime
@@ -47,3 +49,29 @@ def test_run_requires_request(tmp_path):
     client, _ = build_client(tmp_path)
     response = client.post("/api/run", json={})
     assert response.status_code == 400
+
+
+def test_run_without_agent_preserves_automatic_routing(tmp_path):
+    client, runtime = build_client(tmp_path)
+    calls = []
+    runtime.run = lambda request_text, agent=None: (
+        calls.append((request_text, agent)) or SimpleNamespace(to_dict=lambda: {"ok": True})
+    )
+
+    response = client.post("/api/run", json={"request": "این کد را اصلاح کن"})
+
+    assert response.status_code == 200
+    assert calls == [("این کد را اصلاح کن", None)]
+
+
+def test_run_with_explicit_agent_preserves_agent(tmp_path):
+    client, runtime = build_client(tmp_path)
+    calls = []
+    runtime.run = lambda request_text, agent=None: (
+        calls.append((request_text, agent)) or SimpleNamespace(to_dict=lambda: {"ok": True})
+    )
+
+    response = client.post("/api/run", json={"request": "تست پروژه", "agent": "qa"})
+
+    assert response.status_code == 200
+    assert calls == [("تست پروژه", "qa")]
