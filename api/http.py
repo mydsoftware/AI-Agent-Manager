@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from flask import Flask, jsonify, request
+from pathlib import Path
+
+from flask import Flask, jsonify, request, send_from_directory
 
 from api.agent_team_api import AgentTeamAPI
 from api.session_api import create_session_blueprint
@@ -8,16 +10,31 @@ from manager.session_runtime import SessionRuntime
 from runtime import ManagerRuntime
 
 
+DASHBOARD_ROOT = Path(__file__).resolve().parent.parent / "dashboard"
+
+
 def create_app(
     team_api: AgentTeamAPI,
     runtime: ManagerRuntime | None = None,
     session_runtime: SessionRuntime | None = None,
 ) -> Flask:
-    """برنامه HTTP مدیریتی و مسیر واقعی Session کاربر را می‌سازد."""
+    """برنامه HTTP مدیریتی، Session و داشبورد کاربر را می‌سازد."""
     app = Flask(__name__)
     manager_runtime = runtime or ManagerRuntime()
     user_runtime = session_runtime or SessionRuntime(runtime=manager_runtime)
     app.register_blueprint(create_session_blueprint(user_runtime))
+
+    @app.get("/")
+    def dashboard_root():
+        return send_from_directory(DASHBOARD_ROOT, "index.html")
+
+    @app.get("/dashboard")
+    def dashboard():
+        return send_from_directory(DASHBOARD_ROOT, "index.html")
+
+    @app.get("/dashboard/<path:filename>")
+    def dashboard_files(filename: str):
+        return send_from_directory(DASHBOARD_ROOT, filename)
 
     @app.get("/api/agents")
     def list_agents():
