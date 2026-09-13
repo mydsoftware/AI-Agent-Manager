@@ -20,7 +20,7 @@ class ResearchAgent(BaseAgent):
         if self.llm is None:
             return f"وظیفه تحقیق دریافت شد: {task.id}"
 
-        model = self.model_router.resolve("researcher")
+        model = self.model_router.resolve("researcher", capability=task.capability)
         response = self.llm.complete(
             [
                 {"role": "system", "content": "تو ایجنت تحقیق AI-Agent-Manager هستی. مسئله را ساختاریافته تحلیل کن، فرضیات را جدا کن و نتیجه عملی ارائه بده. اگر دسترسی وب نداری، ادعای جست‌وجوی زنده نکن."},
