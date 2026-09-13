@@ -4,11 +4,11 @@
 
 ## هدف
 
-Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. درخواست کاربر به وظایف قابل اجرا تبدیل می‌شود، وظایف بر اساس وابستگی مرتب می‌شوند، به ایجنت مناسب می‌رسند، خطاها مدیریت می‌شوند و نتیجه نهایی گزارش می‌شود.
+Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. کاربر از داشبورد درخواست را ثبت می‌کند؛ Manager درخواست را تحلیل، برنامه‌ریزی، route و اجرا می‌کند و نتیجه را برمی‌گرداند.
 
 ## داشبورد مدیریتی
 
-داشبورد فارسی و RTL مستقیماً توسط Flask سرو می‌شود و از APIهای Manager استفاده می‌کند:
+داشبورد فارسی و RTL مستقیماً توسط Flask سرو می‌شود و از APIهای واقعی Manager استفاده می‌کند:
 
 ```text
 Browser Dashboard
@@ -22,15 +22,16 @@ Planner → Router → Executor → Agents
 LLM Gateway → LM Studio → Local Models
 ```
 
-اجزای فعلی داشبورد:
+قابلیت‌های داشبورد:
 - نمای کلی وضعیت API و Agentها
 - اجرای درخواست با Auto Routing
 - Session و clarification/resume
 - کنترل فعال/غیرفعال‌سازی Agentها
 - Activity و آخرین خروجی
 - رابط responsive و فارسی RTL
+- تنظیم API Key در Session Storage مرورگر برای APIهای محافظت‌شده
 
-پس از اجرای سرویس، داشبورد از مسیر `/` یا `/dashboard` قابل دسترسی است.
+پس از اجرای Flask، داشبورد از مسیر `/` یا `/dashboard` قابل دسترسی است.
 
 ## قابلیت‌های فعلی
 
@@ -39,18 +40,13 @@ LLM Gateway → LM Studio → Local Models
 - Planner و Router با routing مبتنی بر capability
 - مسیر Vision از طریق Developer با capability=`vision`
 - اجرای وابسته وظایف
-- وضعیت‌های استاندارد Task
-- Agentic Loop
-- تلاش مجدد خودکار هنگام خطا
+- Agentic Loop و Repair/Recovery
 - حافظه موقت و حافظه پایدار SQLite
-- گزارش ساختاریافته اجرای Manager
-- API داخلی Python
-- HTTP API با مسیرهای `/health` و `/execute`
-- Session API برای clarification و resume
-- داشبورد مدیریتی فارسی
-- احراز هویت API با کلید محیطی در HTTP API اصلی
+- Session پایدار و clarification/resume
+- HTTP API و Dashboard API
+- احراز هویت اختیاری API با `AI_AGENT_MANAGER_API_KEY`
+- محدودیت اندازه Body و طول درخواست
 - اتصال واقعی به GitHub REST API
-- ایجاد و به‌روزرسانی فایل‌های GitHub
 - Gateway سازگار با OpenAI API برای مدل‌های محلی
 - fallback مدل بر اساس capability
 - Context compaction/truncation با بودجه پیش‌فرض ۱۲K
@@ -90,8 +86,6 @@ Recovery / Memory / Report
 
 ## مدل‌های محلی
 
-پیکربندی مرجع برای سخت‌افزار فعلی پروژه:
-
 | قابلیت | مدل پیش‌فرض |
 |---|---|
 | Planner / General | `qwen3.5-9b` |
@@ -102,111 +96,82 @@ Recovery / Memory / Report
 | Vision | `qwen3-vl-4b-instruct` |
 | Embedding | `text-embedding-nomic-embed-text-v1.5` |
 
-Provider پیش‌فرض `LM Studio` و endpoint پیش‌فرض `http://127.0.0.1:1234/v1` است. مدل‌ها از طریق `ModelRouter` انتخاب می‌شوند و Agentها نباید نام مدل را hard-code کنند.
-
-### Routing
-
-`IntentRouter` ابتدا intent و capability را تشخیص می‌دهد و `MultiAgentPlanner` آن route را به Task تبدیل می‌کند. نمونه‌ها:
-
-```text
-«این کد را اصلاح کن»
-→ developer + capability=coder
-→ qwen2.5-coder-7b
-
-«این اسکرین‌شات را بررسی کن»
-→ developer + capability=vision
-→ qwen3-vl-4b-instruct
-
-«درباره معماری سیستم تحقیق کن»
-→ research + capability=general
-→ qwen3.5-9b
-```
-
-برای هر capability می‌توان با متغیرهای `LLM_MODEL_*` مدل را override کرد.
-
-## مدیریت Context
-
-تمام درخواست‌های LLM از `ContextManager` عبور می‌کنند. سقف عملیاتی پیش‌فرض `12288` token و reserve پیش‌فرض `1024` token است. در overflow، پیام‌های کم‌اهمیت حذف یا truncate می‌شوند و Gateway می‌تواند با context کاهش‌یافته retry کند.
-
-تنظیمات اصلی:
-
-```text
-LLM_CONTEXT_TOKENS=12288
-LLM_CONTEXT_RESERVE_TOKENS=1024
-LLM_TIMEOUT=120
-LLM_MAX_RETRIES=2
-```
-
-Gateway همچنین fallback عمومی و fallbackهای تخصصی Vision/Coder/General را پشتیبانی می‌کند.
+Provider پیش‌فرض `LM Studio` و endpoint پیش‌فرض `http://127.0.0.1:1234/v1` است.
 
 ## اجرای محلی
-
-ابتدا Python 3.12 یا بالاتر را نصب کنید و سپس آزمون‌ها را اجرا کنید:
 
 ```bash
 python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-برای اجرای HTTP API:
+برای اجرای داشبورد مدیریتی با Flask، می‌توان App Factory را مستقیماً توسط WSGI اجرا کرد:
+
+```python
+from api.http import create_default_app
+
+app = create_default_app()
+```
+
+یا در محیط توسعه با Flask:
 
 ```bash
-python http_api.py
+flask --app "api.http:create_default_app()" run --host 127.0.0.1 --port 8080
 ```
 
-سرویس به‌صورت پیش‌فرض روی `127.0.0.1:8080` اجرا می‌شود.
-
-### داشبورد
+پس از اجرا:
 
 ```text
-GET /
-GET /dashboard
+http://127.0.0.1:8080/
 ```
 
-### Session
+### APIهای اصلی
 
 ```text
+GET  /api/health
+GET  /api/agents
+POST /api/agents/{name}/enable
+POST /api/agents/{name}/disable
+POST /api/run
 POST /api/session/start
 POST /api/session/{session_id}/answer
 GET  /api/session/{session_id}
 ```
 
-### اجرای Manager
+### احراز هویت
+
+اگر `AI_AGENT_MANAGER_API_KEY` تنظیم شده باشد، APIهای مدیریتی به Header زیر نیاز دارند:
 
 ```text
-POST /execute
 X-API-Key: کلید شما
-Content-Type: application/json
 ```
 
-```json
-{
-  "request": "درخواست کاربر",
-  "agent": "developer"
-}
+Health عمومی باقی می‌ماند و داشبورد از بخش «تنظیمات» امکان وارد کردن کلید را دارد. کلید در `sessionStorage` مرورگر ذخیره می‌شود و داخل Repository قرار نمی‌گیرد.
+
+### تنظیمات محیطی
+
+```text
+AI_AGENT_MANAGER_API_KEY=...
+AI_AGENT_MANAGER_MAX_REQUEST_LENGTH=12000
+AI_AGENT_MANAGER_MAX_BODY_BYTES=1048576
+LLM_CONTEXT_TOKENS=12288
+LLM_CONTEXT_RESERVE_TOKENS=1024
+LLM_TIMEOUT=120
+LLM_MAX_RETRIES=2
 ```
-
-در صورت حذف `agent`، routing خودکار فعال می‌شود.
-
-## تنظیم کلید API
-
-کلید API در متغیر محیطی `AI_AGENT_MANAGER_API_KEY` قرار می‌گیرد.
-
-## اتصال GitHub
-
-برای عملیات واقعی GitHub، متغیر محیطی `GITHUB_TOKEN` را فقط در محیط اجرا تنظیم کنید. این مقدار نباید در Repository ذخیره یا Commit شود.
 
 ## امنیت
 
-- اطلاعات محرمانه نباید در کد یا Repository قرار بگیرند.
-- کلید API فقط از محیط اجرا خوانده می‌شود.
-- کلیدها با مقایسه امن بررسی می‌شوند.
-- توکن GitHub فقط از محیط اجرا خوانده می‌شود.
-- فایل‌های داشبورد فقط از دایرکتوری `dashboard` سرو می‌شوند.
+- Secretها نباید در Repository قرار بگیرند.
+- API Key فقط از محیط اجرا خوانده می‌شود.
+- مقایسه کلید با مقایسه ثابت‌زمان انجام می‌شود.
+- GitHub Token فقط از محیط اجرا خوانده می‌شود.
+- Session ID برای نام فایل sanitize می‌شود.
+- ورودی API محدودیت طول و اندازه Body دارد.
 
-## تست و CI
+## CI
 
-تست‌های Gateway، routing، planner، Session و Dashboard بدون نیاز به LM Studio قابل اجرا هستند. Workflow اصلی CI با Python 3.12، وابستگی‌ها و Chromium اجرا شده و دستور اصلی آن `pytest -q` است. نتیجه CI باید برای هر commit/PR به‌صورت واقعی بررسی شود و صرف وجود workflow به معنی موفقیت CI نیست.
+Workflow اصلی `.github/workflows/ci.yml` است و تست‌های پروژه را با Python 3.12 و Playwright اجرا می‌کند. صرف وجود Workflow به معنی موفقیت CI نیست؛ وضعیت واقعی Run باید از GitHub بررسی شود.
 
 ## قانون زبان پروژه
 
