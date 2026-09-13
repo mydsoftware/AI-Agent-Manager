@@ -35,7 +35,8 @@ def create_app(
     def run_request():
         payload = request.get_json(silent=True) or {}
         request_text = str(payload.get("request", "")).strip()
-        agent = str(payload.get("agent", "developer")).strip() or "developer"
+        agent_value = payload.get("agent")
+        agent = str(agent_value).strip() if agent_value is not None else None
         if not request_text:
             return jsonify({"error": "فیلد request الزامی است."}), 400
         report = manager_runtime.run(request_text, agent)
