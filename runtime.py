@@ -20,7 +20,7 @@ from manager.task import Task
 
 
 class ManagerRuntime:
-    """محیط اجرای اصلی مدیر چندایجنتی با LLM محلی اختیاری."""
+    """محیط اجرای اصلی مدیر چندایجنتی با LLM محلی."""
 
     def __init__(self, database_path: str = "data/manager.db", registry_path: str = "data/agents.json") -> None:
         self.registry = create_default_registry()
@@ -39,8 +39,8 @@ class ManagerRuntime:
         self.executor = TaskExecutor(self.loop)
         self.orchestrator = ManagerOrchestrator(memory=self.memory)
 
-    def run(self, request: str, agent: str = "developer") -> ManagerReport:
-        """درخواست کاربر را از تحلیل نیت تا گزارش نهایی اجرا می‌کند."""
+    def run(self, request: str, agent: str | None = None) -> ManagerReport:
+        """درخواست را اجرا می‌کند؛ در صورت نبود agent، routing خودکار فعال است."""
         self.persistent_memory.add("شروع درخواست", {"request": request, "agent": agent})
         report = self.orchestrator.execute(request, self.executor, agent)
         self.persistent_memory.add("پایان درخواست", report.to_dict())
