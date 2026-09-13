@@ -86,7 +86,6 @@ class LLMGateway:
     def _fallback_candidates(self, model: str) -> list[str]:
         """مدل اصلی و fallbackهای مناسب را بدون تکرار برمی‌گرداند."""
         candidates = [model]
-        env_key = None
         if "vl" in model.lower() or "vision" in model.lower():
             env_key = "LLM_FALLBACK_MODEL_VISION"
         elif "coder" in model.lower() or "code" in model.lower():
@@ -99,6 +98,38 @@ class LLMGateway:
             candidates.append(fallback)
         return candidates
 
+    def _reduce_context_for_retry(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """برای خطای واقعی context، حتی اگر estimator داخلی مشکلی نبیند، payload را کاهش می‌دهد."""
+        if len(messages) <= 1:
+            return list(messages)
+
+        system = [m for m in messages if m.get("role") == "system"]
+        non_system = [m for m in messages if m.get("role") != "system"]
+        target_tokens = max(
+            self.context_manager.reserve_tokens + 1,
+            self.context_manager.max_tokens // 2,
+        )
+        reduced = ContextManager(
+            max_tokens=target_tokens,
+            reserve_tokens=min(self.context_manager.reserve_tokens, max(1, target_tokens // 4)),
+        ).prepare(system + non_system).messages
+
+        if self._same_payload(messages, reduced):
+            # Server may use a different tokenizer. Force a second, conservative cut.
+            kept = system + non_system[-1:]
+            if len(kept) == len(messages):
+                last = dict(kept[-1])
+                content = str(last.get("content", ""))
+                last["content"] = content[: max(1, len(content) // 2)] + "\n[context reduced for retry]"
+                kept[-1] = last
+            reduced = kept
+
+        return reduced
+
+    @staticmethod
+    def _same_payload(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> bool:
+        return json.dumps(left, ensure_ascii=False, sort_keys=True) == json.dumps(right, ensure_ascii=False, sort_keys=True)
+
     def _complete_model(
         self,
         messages: list[dict[str, Any]],
@@ -110,6 +141,7 @@ class LLMGateway:
         current_messages = list(messages)
         url = f"{self.base_url}/chat/completions"
         last_error: Exception | None = None
+        context_recovered = False
 
         for attempt in range(self.max_retries + 1):
             payload: dict[str, Any] = {"model": model, "messages": current_messages, "temperature": temperature}
@@ -137,11 +169,14 @@ class LLMGateway:
             except urllib.error.HTTPError as exc:
                 error_body = exc.read().decode("utf-8", errors="ignore")
                 last_error = LLMError(f"HTTP {exc.code}: {error_body[:500]}")
-                if self._is_context_error(error_body) and len(current_messages) > 1:
-                    current_messages = self.context_manager.prepare(current_messages).messages
-                    self.stats["context_reductions"] += 1
-                    self.stats["retries"] += 1
-                    continue
+                if self._is_context_error(error_body) and not context_recovered and len(current_messages) > 1:
+                    reduced = self._reduce_context_for_retry(current_messages)
+                    if not self._same_payload(current_messages, reduced):
+                        current_messages = reduced
+                        context_recovered = True
+                        self.stats["context_reductions"] += 1
+                        self.stats["retries"] += 1
+                        continue
                 if attempt < self.max_retries:
                     self.stats["retries"] += 1
                     time.sleep(min(2**attempt, 4))
