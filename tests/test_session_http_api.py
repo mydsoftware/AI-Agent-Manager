@@ -1,6 +1,8 @@
-from pathlib import Path
+from __future__ import annotations
 
 from api.http import create_app
+from manager.session_runtime import SessionRuntime
+from manager.user_session import UserSessionManager
 
 
 class FakeTeamAPI:
@@ -14,45 +16,60 @@ class FakeTeamAPI:
         return {"name": name, "enabled": False}
 
 
-class FakeSessionManager:
+class FakeManagerRuntime:
     def __init__(self):
-        self.sessions = {}
+        self.requests = []
 
-    def start(self, session_id, request):
-        value = {"session_id": session_id, "request": request, "status": "running"}
-        self.sessions[session_id] = value
-        return value
-
-    def ask(self, session_id, question):
-        self.sessions[session_id]["status"] = "waiting_for_user"
-        self.sessions[session_id]["question"] = question
-        return self.sessions[session_id]
-
-    def answer(self, session_id, answer):
-        self.sessions[session_id]["status"] = "running"
-        self.sessions[session_id]["answer"] = answer
-        return self.sessions[session_id]
-
-    def load(self, session_id):
-        return self.sessions[session_id]
+    def run(self, request: str):
+        from manager.report import ManagerReport
+        self.requests.append(request)
+        return ManagerReport([])
 
 
-def test_session_http_flow():
-    app = create_app(FakeTeamAPI(), session_manager=FakeSessionManager())
+def test_session_http_flow(tmp_path):
+    manager_runtime = FakeManagerRuntime()
+    session_runtime = SessionRuntime(
+        sessions=UserSessionManager(str(tmp_path)),
+        runtime=manager_runtime,
+    )
+    app = create_app(FakeTeamAPI(), runtime=manager_runtime, session_runtime=session_runtime)
+    app.config["TESTING"] = True
     client = app.test_client()
 
-    response = client.post("/api/session/start", json={"session_id": "s1", "request": "build a site"})
-    assert response.status_code == 200
-    assert response.get_json()["status"] == "running"
-
-    response = client.post("/api/session/s1/question", json={"question": "What is the site topic?"})
+    response = client.post(
+        "/api/session/start",
+        json={"session_id": "s1", "request": "یک سایت بساز"},
+    )
     assert response.status_code == 200
     assert response.get_json()["status"] == "waiting_for_user"
+    assert response.get_json()["question"]
 
-    response = client.post("/api/session/s1/answer", json={"answer": "Satellite services"})
+    response = client.post(
+        "/api/session/s1/answer",
+        json={"answer": "سایت وردپرسی خدمات ماهواره مرکزی"},
+    )
     assert response.status_code == 200
-    assert response.get_json()["status"] == "running"
+    assert response.get_json()["status"] == "completed"
+    assert len(manager_runtime.requests) == 1
+    assert "خدمات ماهواره مرکزی" in manager_runtime.requests[0]
 
     response = client.get("/api/session/s1")
     assert response.status_code == 200
-    assert response.get_json()["answer"] == "Satellite services"
+    assert response.get_json()["status"] == "completed"
+    assert response.get_json()["output"] is not None
+
+
+def test_session_http_rejects_invalid_payload(tmp_path):
+    session_runtime = SessionRuntime(
+        sessions=UserSessionManager(str(tmp_path)),
+        runtime=FakeManagerRuntime(),
+    )
+    app = create_app(FakeTeamAPI(), session_runtime=session_runtime)
+    app.config["TESTING"] = True
+    client = app.test_client()
+
+    response = client.post("/api/session/start", json={"session_id": "s1"})
+    assert response.status_code == 400
+
+    response = client.post("/api/session/s1/answer", json={"answer": "پاسخ"})
+    assert response.status_code in {400, 404}
