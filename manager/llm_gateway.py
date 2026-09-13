@@ -27,50 +27,23 @@ class LLMResponse:
 class LLMGateway:
     """Gateway سبک و مقاوم برای APIهای OpenAI-compatible و مدل‌های محلی."""
 
-    def __init__(
-        self,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        provider: str | None = None,
-        timeout: float | None = None,
-        max_retries: int | None = None,
-        context_manager: ContextManager | None = None,
-    ) -> None:
+    def __init__(self, base_url: str | None = None, api_key: str | None = None, provider: str | None = None, timeout: float | None = None, max_retries: int | None = None, context_manager: ContextManager | None = None) -> None:
         self.base_url = (base_url or os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1")).rstrip("/")
         self.api_key = api_key or os.getenv("LLM_API_KEY", "lm-studio")
         self.provider = provider or os.getenv("LLM_PROVIDER", "lmstudio")
         self.timeout = timeout if timeout is not None else float(os.getenv("LLM_TIMEOUT", "120"))
         self.max_retries = max(0, max_retries if max_retries is not None else int(os.getenv("LLM_MAX_RETRIES", "2")))
-        self.context_manager = context_manager or ContextManager(
-            max_tokens=int(os.getenv("LLM_CONTEXT_TOKENS", "12288")),
-            reserve_tokens=int(os.getenv("LLM_CONTEXT_RESERVE_TOKENS", "1024")),
-        )
+        self.context_manager = context_manager or ContextManager(max_tokens=int(os.getenv("LLM_CONTEXT_TOKENS", "12288")), reserve_tokens=int(os.getenv("LLM_CONTEXT_RESERVE_TOKENS", "1024")))
         self.fallback_model = os.getenv("LLM_FALLBACK_MODEL", "qwen2.5-coder-7b")
-        self.stats: dict[str, int] = {
-            "requests": 0,
-            "success": 0,
-            "failures": 0,
-            "retries": 0,
-            "context_reductions": 0,
-            "fallbacks": 0,
-        }
+        self.stats: dict[str, int] = {"requests": 0, "success": 0, "failures": 0, "retries": 0, "context_reductions": 0, "fallbacks": 0}
 
-    def complete(
-        self,
-        messages: list[dict[str, Any]],
-        model: str,
-        *,
-        temperature: float = 0.2,
-        max_tokens: int | None = None,
-    ) -> LLMResponse:
+    def complete(self, messages: list[dict[str, Any]], model: str, *, temperature: float = 0.2, max_tokens: int | None = None) -> LLMResponse:
         if not model:
             raise LLMError("مدل LLM مشخص نشده است.")
-
         prepared = self.context_manager.prepare(messages)
         current_messages = prepared.messages
         if prepared.compacted:
             self.stats["context_reductions"] += 1
-
         last_error: Exception | None = None
         for candidate_index, candidate in enumerate(self._fallback_candidates(model)):
             try:
@@ -84,7 +57,6 @@ class LLMGateway:
         raise LLMError(f"LLM request failed: {last_error}") from last_error
 
     def _fallback_candidates(self, model: str) -> list[str]:
-        """مدل اصلی و fallbackهای مناسب را بدون تکرار برمی‌گرداند."""
         candidates = [model]
         if "vl" in model.lower() or "vision" in model.lower():
             env_key = "LLM_FALLBACK_MODEL_VISION"
@@ -92,7 +64,6 @@ class LLMGateway:
             env_key = "LLM_FALLBACK_MODEL_CODER"
         else:
             env_key = "LLM_FALLBACK_MODEL_GENERAL"
-
         fallback = os.getenv(env_key) or self.fallback_model
         if fallback and fallback not in candidates:
             candidates.append(fallback)
@@ -102,48 +73,34 @@ class LLMGateway:
         """برای خطای واقعی context، حتی اگر estimator داخلی مشکلی نبیند، payload را کاهش می‌دهد."""
         if len(messages) <= 1:
             return list(messages)
-
         system = [m for m in messages if m.get("role") == "system"]
         non_system = [m for m in messages if m.get("role") != "system"]
-        target_tokens = max(
-            self.context_manager.reserve_tokens + 1,
-            self.context_manager.max_tokens // 2,
-        )
+        target_tokens = max(self.context_manager.reserve_tokens + 1, self.context_manager.max_tokens // 2)
         reduced = ContextManager(
             max_tokens=target_tokens,
             reserve_tokens=min(self.context_manager.reserve_tokens, max(1, target_tokens // 4)),
         ).prepare(system + non_system).messages
-
         if self._same_payload(messages, reduced):
-            # Server may use a different tokenizer. Force a second, conservative cut.
             kept = system + non_system[-1:]
             if len(kept) == len(messages):
                 last = dict(kept[-1])
                 content = str(last.get("content", ""))
-                last["content"] = content[: max(1, len(content) // 2)] + "\n[context reduced for retry]"
+                last["content"] = content[:max(1, len(content) // 2)] + "\n[context reduced for retry]"
                 kept[-1] = last
             reduced = kept
-
         return reduced
 
     @staticmethod
     def _same_payload(left: list[dict[str, Any]], right: list[dict[str, Any]]) -> bool:
         return json.dumps(left, ensure_ascii=False, sort_keys=True) == json.dumps(right, ensure_ascii=False, sort_keys=True)
 
-    def _complete_model(
-        self,
-        messages: list[dict[str, Any]],
-        model: str,
-        *,
-        temperature: float,
-        max_tokens: int | None,
-    ) -> LLMResponse:
+    def _complete_model(self, messages: list[dict[str, Any]], model: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
         current_messages = list(messages)
         url = f"{self.base_url}/chat/completions"
         last_error: Exception | None = None
         context_recovered = False
-
-        for attempt in range(self.max_retries + 1):
+        attempt = 0
+        while True:
             payload: dict[str, Any] = {"model": model, "messages": current_messages, "temperature": temperature}
             if max_tokens is not None:
                 payload["max_tokens"] = max_tokens
@@ -154,18 +111,12 @@ class LLMGateway:
             self.stats["requests"] += 1
             started = time.perf_counter()
             try:
-                request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=self.timeout) as response:
                     data = json.loads(response.read().decode("utf-8"))
                 content = self._extract_content(data)
                 self.stats["success"] += 1
-                return LLMResponse(
-                    content=content,
-                    model=str(data.get("model") or model),
-                    provider=self.provider,
-                    latency_ms=int((time.perf_counter() - started) * 1000),
-                    usage=data.get("usage") or {},
-                )
+                return LLMResponse(content=content, model=str(data.get("model") or model), provider=self.provider, latency_ms=int((time.perf_counter() - started) * 1000), usage=data.get("usage") or {})
             except urllib.error.HTTPError as exc:
                 error_body = exc.read().decode("utf-8", errors="ignore")
                 last_error = LLMError(f"HTTP {exc.code}: {error_body[:500]}")
@@ -178,14 +129,19 @@ class LLMGateway:
                         self.stats["retries"] += 1
                         continue
                 if attempt < self.max_retries:
+                    attempt += 1
                     self.stats["retries"] += 1
-                    time.sleep(min(2**attempt, 4))
+                    time.sleep(min(2 ** (attempt - 1), 4))
+                    continue
+                break
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, LLMError) as exc:
                 last_error = exc
                 if attempt < self.max_retries:
+                    attempt += 1
                     self.stats["retries"] += 1
-                    time.sleep(min(2**attempt, 4))
-
+                    time.sleep(min(2 ** (attempt - 1), 4))
+                    continue
+                break
         self.stats["failures"] += 1
         raise LLMError(f"LLM request failed: {last_error}") from last_error
 
@@ -206,8 +162,8 @@ class LLMGateway:
 
     def health(self) -> bool:
         try:
-            request = urllib.request.Request(f"{self.base_url}/models", headers={"Authorization": f"Bearer {self.api_key}"})
-            with urllib.request.urlopen(request, timeout=min(self.timeout, 5)) as response:
+            req = urllib.request.Request(f"{self.base_url}/models", headers={"Authorization": f"Bearer {self.api_key}"})
+            with urllib.request.urlopen(req, timeout=min(self.timeout, 5)) as response:
                 return 200 <= response.status < 300
         except Exception:
             return False
