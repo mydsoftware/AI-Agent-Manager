@@ -40,7 +40,9 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(length).decode("utf-8"))
-            result = execute(body.get("request", ""), body.get("agent", "developer"))
+            request = body.get("request", "")
+            agent = body.get("agent")
+            result = execute(request, agent)
             self._send_json(200, result)
         except ValueError as error:
             self._send_json(400, {"error": str(error)})
