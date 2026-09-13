@@ -90,7 +90,6 @@ def test_context_error_reduces_context_and_retries(monkeypatch) -> None:
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     gateway = LLMGateway(max_retries=0)
-    monkeypatch.setattr("time.sleep", lambda *_args: None)
     messages = [
         {"role": "system", "content": "system"},
         {"role": "user", "content": "a" * 10000},
@@ -102,7 +101,36 @@ def test_context_error_reduces_context_and_retries(monkeypatch) -> None:
     assert gateway.stats["context_reductions"] >= 1
     assert gateway.stats["retries"] == 1
     assert len(attempts) == 2
-    assert len(attempts[1]["messages"]) <= len(attempts[0]["messages"])
+    assert len(attempts[1]["messages"]) < len(attempts[0]["messages"])
+
+
+def test_context_error_does_not_loop_forever(monkeypatch) -> None:
+    attempts = []
+
+    def fake_urlopen(request, timeout):
+        attempts.append(json.loads(request.data.decode("utf-8")))
+        raise urllib.error.HTTPError(
+            request.full_url,
+            400,
+            "context",
+            {},
+            io.BytesIO(b"exceeds available context size"),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    gateway = LLMGateway(max_retries=0)
+
+    with pytest.raises(LLMError):
+        gateway.complete(
+            [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "a" * 10000},
+                {"role": "user", "content": "latest"},
+            ],
+            "qwen3.5-9b",
+        )
+
+    assert len(attempts) == 2
 
 
 def test_fallback_candidates_are_capability_aware(monkeypatch) -> None:
