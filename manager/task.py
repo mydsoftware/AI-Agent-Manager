@@ -15,3 +15,4 @@ class Task:
     status: TaskStatus = TaskStatus.PENDING
     result: str | None = None
     error: str | None = None
+    capability: str = "general"
