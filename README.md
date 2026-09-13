@@ -1,10 +1,36 @@
 # AI-Agent-Manager
 
-هسته مدیریت، برنامه‌ریزی و هماهنگی چندایجنتی.
+هسته مدیریت، برنامه‌ریزی و هماهنگی چندایجنتی به‌همراه داشبورد مدیریتی.
 
 ## هدف
 
 Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. درخواست کاربر به وظایف قابل اجرا تبدیل می‌شود، وظایف بر اساس وابستگی مرتب می‌شوند، به ایجنت مناسب می‌رسند، خطاها مدیریت می‌شوند و نتیجه نهایی گزارش می‌شود.
+
+## داشبورد مدیریتی
+
+داشبورد فارسی و RTL مستقیماً توسط Flask سرو می‌شود و از APIهای Manager استفاده می‌کند:
+
+```text
+Browser Dashboard
+  ↓ REST API
+Session / Run / Agent API
+  ↓
+Manager Runtime
+  ↓
+Planner → Router → Executor → Agents
+  ↓
+LLM Gateway → LM Studio → Local Models
+```
+
+اجزای فعلی داشبورد:
+- نمای کلی وضعیت API و Agentها
+- اجرای درخواست با Auto Routing
+- Session و clarification/resume
+- کنترل فعال/غیرفعال‌سازی Agentها
+- Activity و آخرین خروجی
+- رابط responsive و فارسی RTL
+
+پس از اجرای سرویس، داشبورد از مسیر `/` یا `/dashboard` قابل دسترسی است.
 
 ## قابلیت‌های فعلی
 
@@ -20,7 +46,9 @@ Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخ�
 - گزارش ساختاریافته اجرای Manager
 - API داخلی Python
 - HTTP API با مسیرهای `/health` و `/execute`
-- احراز هویت API با کلید محیطی
+- Session API برای clarification و resume
+- داشبورد مدیریتی فارسی
+- احراز هویت API با کلید محیطی در HTTP API اصلی
 - اتصال واقعی به GitHub REST API
 - ایجاد و به‌روزرسانی فایل‌های GitHub
 - Gateway سازگار با OpenAI API برای مدل‌های محلی
@@ -33,7 +61,9 @@ Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخ�
 ```text
 کاربر
   ↓
-HTTP API / Python API
+Dashboard / HTTP API / Python API
+  ↓
+Session Runtime
   ↓
 Manager Runtime
   ↓
@@ -126,10 +156,19 @@ python http_api.py
 
 سرویس به‌صورت پیش‌فرض روی `127.0.0.1:8080` اجرا می‌شود.
 
-### بررسی سلامت
+### داشبورد
 
 ```text
-GET /health
+GET /
+GET /dashboard
+```
+
+### Session
+
+```text
+POST /api/session/start
+POST /api/session/{session_id}/answer
+GET  /api/session/{session_id}
 ```
 
 ### اجرای Manager
@@ -157,40 +196,17 @@ Content-Type: application/json
 
 برای عملیات واقعی GitHub، متغیر محیطی `GITHUB_TOKEN` را فقط در محیط اجرا تنظیم کنید. این مقدار نباید در Repository ذخیره یا Commit شود.
 
-ایجنت GitHub از دستور JSON ساختاریافته پشتیبانی می‌کند. نمونه خواندن فایل:
-
-```json
-{
-  "action": "file",
-  "repository": "mydsoftware/AI-Agent-Manager",
-  "path": "README.md",
-  "ref": "feature/manager-core"
-}
-```
-
-نمونه ایجاد یا به‌روزرسانی فایل:
-
-```json
-{
-  "action": "put_file",
-  "repository": "mydsoftware/AI-Agent-Manager",
-  "path": "example.txt",
-  "content": "متن فایل",
-  "branch": "feature/manager-core",
-  "message": "feat: به‌روزرسانی فایل"
-}
-```
-
 ## امنیت
 
 - اطلاعات محرمانه نباید در کد یا Repository قرار بگیرند.
 - کلید API فقط از محیط اجرا خوانده می‌شود.
 - کلیدها با مقایسه امن بررسی می‌شوند.
 - توکن GitHub فقط از محیط اجرا خوانده می‌شود.
+- فایل‌های داشبورد فقط از دایرکتوری `dashboard` سرو می‌شوند.
 
 ## تست و CI
 
-تست‌های Gateway، routing و planner بدون نیاز به LM Studio قابل اجرا هستند. Workflow اصلی CI با Python 3.12، وابستگی‌ها و Chromium اجرا شده و دستور اصلی آن `pytest -q` است. نتیجه CI باید برای هر commit/PR به‌صورت واقعی بررسی شود و صرف وجود workflow به معنی موفقیت CI نیست.
+تست‌های Gateway، routing، planner، Session و Dashboard بدون نیاز به LM Studio قابل اجرا هستند. Workflow اصلی CI با Python 3.12، وابستگی‌ها و Chromium اجرا شده و دستور اصلی آن `pytest -q` است. نتیجه CI باید برای هر commit/PR به‌صورت واقعی بررسی شود و صرف وجود workflow به معنی موفقیت CI نیست.
 
 ## قانون زبان پروژه
 
