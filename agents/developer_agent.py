@@ -34,14 +34,22 @@ class DeveloperAgent(BaseAgent):
         except (TypeError, json.JSONDecodeError):
             command = None
 
-        if isinstance(command, dict) and command.get("repository") and command.get("changes") and command.get("branch"):
-            return json.dumps({
-                "type": "development_plan", "engineering_loop": True,
-                "repository": command["repository"], "base": command.get("base", "main"),
-                "branch": command["branch"], "workflow": command.get("workflow", "ci.yml"),
-                "changes": command["changes"], "repair_changes": command.get("repair_changes", []),
-                "pr": command.get("pr", {}),
-            }, ensure_ascii=False)
+        if isinstance(command, dict) and command.get("repository") and command.get("branch"):
+            changes = command.get("changes")
+            if not changes and command.get("change"):
+                changes = [{
+                    "path": "ENGINEERING_REQUEST.md",
+                    "content": str(command["change"]) + "\n",
+                    "message": "chore: record engineering request",
+                }]
+            if changes:
+                return json.dumps({
+                    "type": "development_plan", "engineering_loop": True,
+                    "repository": command["repository"], "base": command.get("base", "main"),
+                    "branch": command["branch"], "workflow": command.get("workflow", "ci.yml"),
+                    "changes": changes, "repair_changes": command.get("repair_changes", []),
+                    "pr": command.get("pr", {}),
+                }, ensure_ascii=False)
 
         if self.llm is None:
             return json.dumps({"type":"development_plan","engineering_loop":False,"message":"LLM برای تولید برنامه اجرایی در دسترس نیست."}, ensure_ascii=False)
@@ -63,5 +71,6 @@ class DeveloperAgent(BaseAgent):
                 parsed.setdefault("branch", branch)
                 return json.dumps(parsed, ensure_ascii=False)
         except json.JSONDecodeError:
-            pass
+            if task.capability in {"vision", "coder"}:
+                return raw
         return json.dumps({"type":"development_plan","engineering_loop":False,"message":"مدل نتوانست برنامه اجرایی JSON تولید کند.","analysis":raw}, ensure_ascii=False)
