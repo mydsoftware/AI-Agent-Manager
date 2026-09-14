@@ -60,7 +60,18 @@ class GitHubAPIClient:
 
     def create_branch(self, repository: str, branch: str, base: str) -> Any:
         base_ref = self._request("GET", f"/repos/{repository}/git/ref/heads/{base}")
-        return self._request("POST", f"/repos/{repository}/git/refs", {"ref": f"refs/heads/{branch}", "sha": base_ref["object"]["sha"]})
+        try:
+            return self._request(
+                "POST",
+                f"/repos/{repository}/git/refs",
+                {"ref": f"refs/heads/{branch}", "sha": base_ref["object"]["sha"]},
+            )
+        except RuntimeError as error:
+            # Engineering loops are retryable. If the branch already exists,
+            # reuse it instead of failing the whole loop on GitHub's 422.
+            if "خطای 422" not in str(error):
+                raise
+            return self._request("GET", f"/repos/{repository}/git/ref/heads/{branch}")
 
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any:
         return self._request("POST", f"/repos/{repository}/pulls", {"title": title, "head": head, "base": base, "body": body, "draft": draft})
