@@ -16,7 +16,7 @@ class MultiAgentPlan:
 
 
 class MultiAgentPlanner:
-    """درخواست‌های چندحوزه‌ای را به چند وظیفه تخصصی تبدیل می‌کند."""
+    """درخواست‌های چندحوزه‌ای را به وظایف تخصصی با ترتیب اجرایی تبدیل می‌کند."""
 
     def __init__(self, intent_router: IntentRouter | None = None) -> None:
         self.intent_router = intent_router or IntentRouter()
@@ -36,38 +36,30 @@ class MultiAgentPlanner:
             tasks.append(Task("qa-1", "آزمون نهایی", intent.goal, "qa", capability="coding"))
         elif route.intent == "plan":
             tasks.append(Task("developer-1", "طراحی راهکار", intent.goal, "developer", capability="general"))
+        else:
+            tasks.append(Task("developer-1", "اجرای درخواست", intent.goal, "developer", capability=route.capability))
 
-        android_requested = any(word in text for word in (
-            "android", "اندروید", "apk", "aab", "اپلیکیشن موبایل", "برنامه موبایل"
-        ))
+        android_requested = any(word in text for word in ("android", "اندروید", "apk", "aab", "اپلیکیشن موبایل", "برنامه موبایل"))
         if android_requested:
-            dependency = [tasks[-1].id] if tasks else []
-            repository = os.getenv("AI_AGENT_MANAGER_REPOSITORY", "mydsoftware/AI-Agent-Manager")
-            branch = os.getenv("AI_AGENT_MANAGER_BUILD_BRANCH", "feature/manager-core")
+            dependency = [tasks[-1].id]
             build_command = {
-                "repository": repository,
-                "branch": branch,
+                "repository": os.getenv("AI_AGENT_MANAGER_REPOSITORY", "mydsoftware/AI-Agent-Manager"),
+                "branch": os.getenv("AI_AGENT_MANAGER_BUILD_BRANCH", "feature/manager-core"),
                 "workflows": ["android-build-automated.yml", "android-build.yml"],
                 "timeout": int(os.getenv("AI_AGENT_MANAGER_BUILD_TIMEOUT", "900")),
             }
-            tasks.append(Task(
-                "android-build-1",
-                "بیلد و بسته‌بندی اندروید",
-                json.dumps(build_command, ensure_ascii=False),
-                "android-build",
-                dependency,
-                capability="android-build",
-            ))
+            tasks.append(Task("android-build-1", "بیلد و بسته‌بندی اندروید", json.dumps(build_command, ensure_ascii=False), "android-build", dependency, capability="android-build"))
 
         if any(word in text for word in ("تست", "آزمون", "بررسی نهایی", "test")) and not any(task.agent == "qa" for task in tasks):
-            dependency = [tasks[-1].id] if tasks else []
+            dependency = [tasks[-1].id]
             tasks.append(Task("qa-1", "آزمون نهایی", intent.goal, "qa", dependency, capability="coding"))
 
-        if any(word in text for word in ("github", "گیتهاب", "مخزن", "repository")):
+        # درخواست‌های واقعی GitHub توسط Developer → Engineering Loop انجام می‌شوند.
+        # این Task فقط برای درخواست‌های مستقیم GitHub که مسیر توسعه ندارند لازم است.
+        github_requested = any(word in text for word in ("github", "گیتهاب", "مخزن", "repository"))
+        has_developer = any(task.agent == "developer" for task in tasks)
+        if github_requested and not has_developer:
             dependency = [tasks[-1].id] if tasks else []
             tasks.append(Task("github-1", "عملیات GitHub", intent.goal, "github", dependency, capability="general"))
-
-        if not tasks:
-            tasks.append(Task("task-1", "اجرای درخواست", intent.goal, intent.agent or route.role, capability=route.capability))
 
         return MultiAgentPlan(tasks)
