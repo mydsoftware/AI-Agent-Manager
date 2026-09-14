@@ -3,20 +3,25 @@ from agents.developer_agent import DeveloperAgent
 import json
 
 
-def test_developer_agent_builds_engineering_plan():
+def test_developer_agent_builds_autonomous_engineering_plan():
     task = Task(
         id="dev-1",
         title="تغییر کد",
         description=json.dumps({
             "repository": "mydsoftware/AI-Agent-Manager",
             "branch": "feature/test",
-            "change": "افزودن یک قابلیت آزمایشی",
+            "changes": [{
+                "path": "tests/generated.txt",
+                "content": "generated",
+                "message": "test: generated change",
+            }],
         }, ensure_ascii=False),
         agent="developer",
     )
     result = json.loads(DeveloperAgent().run(task))
     assert result["type"] == "development_plan"
     assert result["engineering_loop"] is True
+    assert len(result["changes"]) == 1
 
 
 def test_developer_agent_handles_incomplete_task():
