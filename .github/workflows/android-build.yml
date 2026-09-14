@@ -1,0 +1,83 @@
+name: ساخت اندروید
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build APK/AAB
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+
+    steps:
+      - name: دریافت کد پروژه
+        uses: actions/checkout@v4
+
+      - name: بررسی پروژه اندروید
+        id: detect
+        shell: bash
+        run: |
+          if [ ! -f ./gradlew ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "پروژه Android/Gradle در مسیر android پیدا نشد."
+            exit 0
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      - name: تنظیم JDK
+        if: steps.detect.outputs.available == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: اجازه اجرای Gradle Wrapper
+        if: steps.detect.outputs.available == 'true'
+        run: chmod +x ./gradlew
+
+      # مسیر اصلی: Build Android App — sparkfabrik/android-build-action
+      - name: Build Android App - APK
+        if: steps.detect.outputs.available == 'true'
+        uses: sparkfabrik/android-build-action@v1.5.0
+        with:
+          project-path: android
+          output-path: android-build.apk
+          gradle-task: assembleDebug
+
+      - name: Build AAB release
+        if: steps.detect.outputs.available == 'true'
+        run: ./gradlew app:bundleRelease
+
+      - name: Build APK release
+        if: steps.detect.outputs.available == 'true'
+        run: ./gradlew app:assembleRelease
+
+      - name: آپلود APK/AAB به Artifact
+        if: steps.detect.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            android-build.apk
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+
+      - name: گزارش نبود پروژه Android
+        if: steps.detect.outputs.available != 'true'
+        run: echo "فعلاً پروژه Android در این Repository وجود ندارد؛ Workflow آماده است و پس از اضافه‌شدن android/ فعال می‌شود."
