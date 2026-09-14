@@ -9,58 +9,52 @@ from .base_agent import BaseAgent
 
 
 class DeveloperAgent(BaseAgent):
-    """ایجنت تخصصی توسعه نرم‌افزار برای اجرای وظایف کدنویسی."""
+    """ایجنت توسعه؛ درخواست طبیعی را به برنامه اجرایی ساختاریافته تبدیل می‌کند."""
 
     name = "developer"
+
+    SYSTEM_PROMPT = """تو Developer Agent پروژه AI-Agent-Manager هستی.
+درخواست طبیعی کاربر را به برنامه اجرایی قابل‌اجرا تبدیل کن.
+اگر درخواست ساخت یا تغییر نرم‌افزار است، فقط JSON معتبر برگردان و هیچ Markdown اضافه نکن.
+ساختار JSON:
+{"type":"development_plan","engineering_loop":true,"repository":"owner/repo","base":"main","branch":"feature/ai-short-name","workflow":"ci.yml","changes":[{"path":"relative/path","content":"complete file content","message":"commit message"}],"repair_changes":[],"pr":{"title":"...","body":"...","draft":true}}
+هر فایل باید محتوای کامل داشته باشد. اگر Repository مشخص نیست، از AI_AGENT_MANAGER_REPOSITORY استفاده می‌شود.
+هیچ Secret یا token داخل خروجی قرار نده.
+اگر درخواست فقط تحلیل است، engineering_loop=false برگردان.
+"""
 
     def __init__(self, llm: LLMGateway | None = None, model_router: ModelRouter | None = None) -> None:
         self.llm = llm
         self.model_router = model_router or ModelRouter()
 
     def run(self, task: Task) -> str:
-        """وظیفه توسعه را به برنامه استاندارد تبدیل می‌کند و در حالت LLM از مدل محلی کمک می‌گیرد."""
         try:
             command = json.loads(task.description)
         except (TypeError, json.JSONDecodeError):
             command = None
 
-        if isinstance(command, dict):
-            repository = command.get("repository")
-            change = command.get("change")
-            branch = command.get("branch")
-            if repository and change and branch:
-                plan = {
-                    "type": "development_plan",
-                    "repository": repository,
-                    "branch": branch,
-                    "change": change,
-                    "base": command.get("base", "main"),
-                    "workflow": command.get("workflow"),
-                    "repair_change": command.get("repair_change"),
-                    "pr": command.get("pr", {}),
-                    "engineering_loop": True,
-                }
-                return json.dumps(plan, ensure_ascii=False)
-
-            return json.dumps(
-                {
-                    "type": "development_plan",
-                    "engineering_loop": False,
-                    "message": "اطلاعات Repository، branch یا change برای اجرای خودکار کامل نیست.",
-                },
-                ensure_ascii=False,
-            )
+        if isinstance(command, dict) and command.get("repository") and command.get("changes") and command.get("branch"):
+            return json.dumps({
+                "type": "development_plan", "engineering_loop": True,
+                "repository": command["repository"], "base": command.get("base", "main"),
+                "branch": command["branch"], "workflow": command.get("workflow", "ci.yml"),
+                "changes": command["changes"], "repair_changes": command.get("repair_changes", []),
+                "pr": command.get("pr", {}),
+            }, ensure_ascii=False)
 
         if self.llm is None:
-            return "وظیفه توسعه دریافت شد و برای تحلیل و پیاده‌سازی آماده است."
+            return json.dumps({"type":"development_plan","engineering_loop":False,"message":"LLM برای تولید برنامه اجرایی در دسترس نیست."}, ensure_ascii=False)
 
         model = self.model_router.resolve("developer", capability=task.capability)
         response = self.llm.complete(
-            [
-                {"role": "system", "content": "تو ایجنت توسعه نرم‌افزار AI-Agent-Manager هستی. پاسخ را عملی، دقیق و کوتاه بده و اگر نیاز به تغییر کد است، مراحل و فایل‌های درگیر را مشخص کن."},
-                {"role": "user", "content": task.description},
-            ],
-            model,
-            temperature=0.2,
+            [{"role":"system","content":self.SYSTEM_PROMPT},{"role":"user","content":task.description}],
+            model, temperature=0.1,
         )
-        return response.content
+        raw = response.content.strip()
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and parsed.get("type") == "development_plan":
+                return json.dumps(parsed, ensure_ascii=False)
+        except json.JSONDecodeError:
+            pass
+        return json.dumps({"type":"development_plan","engineering_loop":False,"message":"مدل نتوانست برنامه اجرایی JSON تولید کند.","analysis":raw}, ensure_ascii=False)
