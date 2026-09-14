@@ -4,84 +4,118 @@
 
 ## هدف
 
-Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. کاربر از داشبورد درخواست را ثبت می‌کند؛ Manager درخواست را تحلیل، برنامه‌ریزی، route و اجرا می‌کند و نتیجه را برمی‌گرداند.
+Manager هسته کنترلی مجموعه‌ای از ایجنت‌های تخصصی هوش مصنوعی است. کاربر فقط درخواست را ثبت می‌کند؛ Manager درخواست را تحلیل، برنامه‌ریزی، route و اجرا می‌کند و نتیجه را برمی‌گرداند.
 
 ## داشبورد مدیریتی
 
 داشبورد فارسی و RTL مستقیماً توسط Flask سرو می‌شود و از APIهای واقعی Manager استفاده می‌کند:
 
 ```text
-Browser Dashboard
-  ↓ REST API
-Session / Run / Agent API
-  ↓
+کاربر
+ ↓
+Dashboard / HTTP API
+ ↓
+Session Runtime
+ ↓
 Manager Runtime
-  ↓
-Planner → Router → Executor → Agents
-  ↓
-LLM Gateway → LM Studio → Local Models
+ ↓
+Intent / Planner
+ ↓
+Task Graph / Executor
+ ↓
+Specialist Agents
+ ↓
+Model Router / LLM Gateway
+ ↓
+LM Studio / Local Models
+ ↓
+GitHub / CI / Build
+ ↓
+Report / Memory
 ```
-
-قابلیت‌های داشبورد:
-- نمای کلی وضعیت API و Agentها
-- اجرای درخواست با Auto Routing
-- Session و clarification/resume
-- کنترل فعال/غیرفعال‌سازی Agentها
-- Activity و آخرین خروجی
-- رابط responsive و فارسی RTL
-- تنظیم API Key در Session Storage مرورگر برای APIهای محافظت‌شده
-
-پس از اجرای Flask، داشبورد از مسیر `/` یا `/dashboard` قابل دسترسی است.
 
 ## قابلیت‌های فعلی
 
 - Registry ایجنت‌های تخصصی
 - Research، Developer، QA و GitHub Agent
 - Planner و Router با routing مبتنی بر capability
-- مسیر Vision از طریق Developer با capability=`vision`
-- اجرای وابسته وظایف
-- Agentic Loop و Repair/Recovery
-- حافظه موقت و حافظه پایدار SQLite
+- Vision با capability=`vision`
+- اجرای وابسته وظایف و Agentic Loop
+- Repair/Recovery و حافظه موقت/پایدار SQLite
 - Session پایدار و clarification/resume
-- HTTP API و Dashboard API
+- HTTP API و Dashboard RTL
 - احراز هویت اختیاری API با `AI_AGENT_MANAGER_API_KEY`
 - محدودیت اندازه Body و طول درخواست
 - اتصال واقعی به GitHub REST API
 - Gateway سازگار با OpenAI API برای مدل‌های محلی
 - fallback مدل بر اساس capability
 - Context compaction/truncation با بودجه پیش‌فرض ۱۲K
-- آزمون‌های خودکار با pytest و GitHub Actions
+- CI خودکار با pytest و GitHub Actions
+
+## بیلد خودکار اندروید
+
+وقتی متن کاربر شامل Android، اندروید، APK، AAB یا اپلیکیشن موبایل باشد، Planner به‌صورت خودکار یک مرحله `android-build` به Task Graph اضافه می‌کند.
+
+این ایجنت از دو Workflow اختصاصی همین Repository استفاده می‌کند:
+
+1. `android-build-automated.yml` — موتور اصلی Gradle برای test، build، APK Debug، APK Release و AAB Release.
+2. `android-build.yml` — موتور دوم مبتنی بر `sparkfabrik/android-build-action@v1.5.0` برای ساخت APK و تکمیل AAB/Release.
+
+ترتیب خودکار:
+
+```text
+Prompt کاربر
+ ↓
+Planner
+ ↓
+Developer / Specialist Agents
+ ↓
+Android Build Agent
+ ↓
+Gradle Workflow
+ ↓ اگر شکست خورد
+Build Android App Action Workflow
+ ↓
+APK / AAB Artifacts
+ ↓
+Report
+```
+
+ایجنت وضعیت Workflow را از GitHub پیگیری می‌کند و فقط در صورت شکست موتور اول سراغ موتور دوم می‌رود.
+
+برای استفاده مستقل از Repository دیگر:
+
+```text
+AI_AGENT_MANAGER_REPOSITORY=owner/repository
+AI_AGENT_MANAGER_BUILD_BRANCH=feature/manager-core
+AI_AGENT_MANAGER_BUILD_TIMEOUT=900
+```
+
+برای اجرای واقعی این مرحله، `GITHUB_TOKEN` باید دسترسی اجرای GitHub Actions روی Repository را داشته باشد.
 
 ## معماری
 
 ```text
-کاربر
+User Prompt
   ↓
-Dashboard / HTTP API / Python API
+IntentRouter / IntentParser
   ↓
-Session Runtime
-  ↓
-Manager Runtime
-  ↓
-IntentRouter / Orchestrator
+ManagerOrchestrator
   ↓
 MultiAgentPlanner
   ↓
-Task Graph / Executor
-  ↓
-Router
-  ↓
-Specialist Agent
-  ↓
-ModelRouter
-  ↓
-LLMGateway
-  ↓
-LM Studio / OpenAI-compatible API
-  ↓
-Local Model
-  ↓
-Recovery / Memory / Report
+Task Graph
+  ├── Research Agent
+  ├── Developer Agent
+  ├── Vision Agent
+  ├── QA Agent
+  ├── GitHub Agent
+  ├── GitHub Project Agent
+  └── Android Build Agent
+             ↓
+      GitHub Actions
+       ├── Gradle Native
+       └── Build Android App Action
 ```
 
 ## مدل‌های محلی
@@ -105,27 +139,13 @@ python -m pip install -r requirements.txt
 python -m pytest -q
 ```
 
-برای اجرای داشبورد مدیریتی با Flask، می‌توان App Factory را مستقیماً توسط WSGI اجرا کرد:
-
-```python
-from api.http import create_default_app
-
-app = create_default_app()
-```
-
-یا در محیط توسعه با Flask:
+برای اجرای داشبورد:
 
 ```bash
 flask --app "api.http:create_default_app()" run --host 127.0.0.1 --port 8080
 ```
 
-پس از اجرا:
-
-```text
-http://127.0.0.1:8080/
-```
-
-### APIهای اصلی
+## APIهای اصلی
 
 ```text
 GET  /api/health
@@ -138,22 +158,15 @@ POST /api/session/{session_id}/answer
 GET  /api/session/{session_id}
 ```
 
-### احراز هویت
-
-اگر `AI_AGENT_MANAGER_API_KEY` تنظیم شده باشد، APIهای مدیریتی به Header زیر نیاز دارند:
-
-```text
-X-API-Key: کلید شما
-```
-
-Health عمومی باقی می‌ماند و داشبورد از بخش «تنظیمات» امکان وارد کردن کلید را دارد. کلید در `sessionStorage` مرورگر ذخیره می‌شود و داخل Repository قرار نمی‌گیرد.
-
-### تنظیمات محیطی
+## تنظیمات محیطی
 
 ```text
 AI_AGENT_MANAGER_API_KEY=...
 AI_AGENT_MANAGER_MAX_REQUEST_LENGTH=12000
 AI_AGENT_MANAGER_MAX_BODY_BYTES=1048576
+AI_AGENT_MANAGER_REPOSITORY=mydsoftware/AI-Agent-Manager
+AI_AGENT_MANAGER_BUILD_BRANCH=feature/manager-core
+AI_AGENT_MANAGER_BUILD_TIMEOUT=900
 LLM_CONTEXT_TOKENS=12288
 LLM_CONTEXT_RESERVE_TOKENS=1024
 LLM_TIMEOUT=120
@@ -163,15 +176,14 @@ LLM_MAX_RETRIES=2
 ## امنیت
 
 - Secretها نباید در Repository قرار بگیرند.
-- API Key فقط از محیط اجرا خوانده می‌شود.
-- مقایسه کلید با مقایسه ثابت‌زمان انجام می‌شود.
-- GitHub Token فقط از محیط اجرا خوانده می‌شود.
+- API Key و GitHub Token فقط از محیط اجرا خوانده می‌شوند.
 - Session ID برای نام فایل sanitize می‌شود.
 - ورودی API محدودیت طول و اندازه Body دارد.
+- `main` نباید توسط Agent تغییر داده شود؛ عملیات توسعه باید روی branch کاری انجام شود.
 
 ## CI
 
-Workflow اصلی `.github/workflows/ci.yml` است و تست‌های پروژه را با Python 3.12 و Playwright اجرا می‌کند. صرف وجود Workflow به معنی موفقیت CI نیست؛ وضعیت واقعی Run باید از GitHub بررسی شود.
+Workflow اصلی `.github/workflows/ci.yml` است. Workflowهای Android فقط در صورت وجود پروژه معتبر `android/gradlew` موفق می‌شوند و Artifactهای APK/AAB را منتشر می‌کنند.
 
 ## قانون زبان پروژه
 
