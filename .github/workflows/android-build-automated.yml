@@ -27,84 +27,49 @@ jobs:
     defaults:
       run:
         working-directory: android
-
     steps:
       - name: دریافت کد پروژه
         uses: actions/checkout@v4
-
       - name: بررسی پروژه Android/Gradle
-        id: detect
-        shell: bash
-        run: |
-          if [ ! -f ./gradlew ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "available=true" >> "$GITHUB_OUTPUT"
-
+        run: test -f ./gradlew || { echo 'پروژه Android/Gradle در مسیر android پیدا نشد.'; exit 1; }
       - name: تنظیم JDK 17
-        if: steps.detect.outputs.available == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: zulu
           java-version: '17'
           cache: gradle
-
       - name: تنظیم Gradle Wrapper
-        if: steps.detect.outputs.available == 'true'
         run: chmod +x ./gradlew
-
       - name: اجرای تست‌های Gradle
-        if: steps.detect.outputs.available == 'true'
         run: ./gradlew test
-
       - name: Build کامل Gradle
-        if: steps.detect.outputs.available == 'true'
         run: ./gradlew build
-
       - name: ساخت APK Debug
-        if: steps.detect.outputs.available == 'true'
         run: ./gradlew assembleDebug
-
       - name: ساخت APK Release
-        if: steps.detect.outputs.available == 'true'
         run: ./gradlew assembleRelease
-
       - name: ساخت AAB Release
-        if: steps.detect.outputs.available == 'true'
         run: ./gradlew ${main_project_module}:bundleRelease
-
       - name: ثبت نام فایل‌ها
-        if: steps.detect.outputs.available == 'true'
         working-directory: .
         run: |
           echo '### Android Build Outputs' >> "$GITHUB_STEP_SUMMARY"
           find android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -print | tee -a "$GITHUB_STEP_SUMMARY"
-
       - name: آپلود APK Debug
-        if: steps.detect.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-debug-${{ github.sha }}
           if-no-files-found: error
           path: android/app/build/outputs/apk/debug/*.apk
-
       - name: آپلود APK Release
-        if: steps.detect.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-release-${{ github.sha }}
           if-no-files-found: error
           path: android/app/build/outputs/apk/release/*.apk
-
       - name: آپلود AAB Release
-        if: steps.detect.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: android-aab-release-${{ github.sha }}
           if-no-files-found: error
           path: android/app/build/outputs/bundle/release/*.aab
-
-      - name: گزارش نبود پروژه Android
-        if: steps.detect.outputs.available != 'true'
-        run: echo 'فعلاً پوشه android/ یا Gradle Wrapper وجود ندارد؛ Workflow آماده است.'
