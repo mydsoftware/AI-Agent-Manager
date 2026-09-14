@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from manager.user_session import UserSessionManager
 
 
@@ -29,9 +31,31 @@ def test_user_session_question_answer_resume_and_complete(tmp_path):
 def test_answer_without_active_question_is_rejected(tmp_path):
     manager = UserSessionManager(str(tmp_path))
     manager.start("site-2", "سایت بساز")
-    try:
+    with pytest.raises(ValueError, match="در انتظار پاسخ"):
         manager.answer("site-2", "پاسخ")
-    except ValueError as error:
-        assert "در انتظار پاسخ" in str(error)
-    else:
-        raise AssertionError("پاسخ بدون سؤال فعال نباید پذیرفته شود")
+
+
+def test_session_id_rejects_path_and_invalid_characters(tmp_path):
+    manager = UserSessionManager(str(tmp_path))
+    with pytest.raises(ValueError):
+        manager.start("../escape", "درخواست معتبر")
+    with pytest.raises(ValueError):
+        manager.start("session space", "درخواست معتبر")
+
+
+def test_failed_session_is_persisted(tmp_path):
+    manager = UserSessionManager(str(tmp_path))
+    manager.start("site-fail", "درخواست معتبر")
+    failed = manager.fail("site-fail", "اجرای Agent شکست خورد")
+    assert failed.status == "failed"
+    assert failed.stage == "execution"
+    restored = manager.get("site-fail")
+    assert restored.status == "failed"
+    assert restored.output == {"error": "اجرای Agent شکست خورد"}
+
+
+def test_session_save_is_recoverable_after_replacement(tmp_path):
+    manager = UserSessionManager(str(tmp_path))
+    manager.start("site-atomic", "درخواست معتبر")
+    manager.complete("site-atomic", {"ok": True})
+    assert manager.get("site-atomic").output == {"ok": True}
