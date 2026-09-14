@@ -45,12 +45,17 @@ class LLMGateway:
         if prepared.compacted:
             self.stats["context_reductions"] += 1
         last_error: Exception | None = None
-        for candidate_index, candidate in enumerate(self._fallback_candidates(model)):
+        candidates = self._fallback_candidates(model)
+        for candidate_index, candidate in enumerate(candidates):
             try:
                 return self._complete_model(current_messages, candidate, temperature=temperature, max_tokens=max_tokens)
             except LLMError as exc:
                 last_error = exc
-                if candidate_index + 1 < len(self._fallback_candidates(model)):
+                # A real context-window error must be repaired in-place; do not
+                # switch models after the gateway has already reduced the payload.
+                if "exceeds available context" in str(exc).lower() or "context length" in str(exc).lower():
+                    raise
+                if candidate_index + 1 < len(candidates):
                     self.stats["fallbacks"] += 1
                     continue
                 raise
@@ -70,7 +75,6 @@ class LLMGateway:
         return candidates
 
     def _reduce_context_for_retry(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """برای خطای واقعی context، حتی اگر estimator داخلی مشکلی نبیند، payload را کاهش می‌دهد."""
         if len(messages) <= 1:
             return list(messages)
         system = [m for m in messages if m.get("role") == "system"]
