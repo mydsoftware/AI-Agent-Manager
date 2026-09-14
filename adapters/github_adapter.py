@@ -10,14 +10,13 @@ from urllib.request import Request, urlopen
 
 
 class GitHubClient(Protocol):
-    """قرارداد موردنیاز برای اتصال به سرویس GitHub."""
-
     def get_repository(self, repository: str) -> Any: ...
     def get_file(self, repository: str, path: str, ref: str | None = None) -> Any: ...
     def put_file(self, repository: str, path: str, content: str, message: str, branch: str, sha: str | None = None) -> Any: ...
     def create_branch(self, repository: str, branch: str, base: str) -> Any: ...
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any: ...
     def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any: ...
+    def dispatch_workflow(self, repository: str, workflow: str, branch: str, inputs: dict | None = None) -> Any: ...
 
 
 class GitHubAPIClient:
@@ -28,7 +27,6 @@ class GitHubAPIClient:
         self.api_url = api_url.rstrip("/")
 
     def _request(self, method: str, path: str, payload: dict | None = None) -> Any:
-        """درخواست احراز هویت‌شده‌ای به GitHub ارسال می‌کند."""
         if not self.token:
             raise RuntimeError("GITHUB_TOKEN تنظیم نشده است.")
         headers = {
@@ -41,7 +39,8 @@ class GitHubAPIClient:
         request = Request(f"{self.api_url}{path}", data=data, headers=headers, method=method)
         try:
             with urlopen(request, timeout=30) as response:
-                return json.loads(response.read().decode("utf-8"))
+                raw = response.read().decode("utf-8")
+                return json.loads(raw) if raw else {"accepted": True}
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"GitHub API خطای {error.code}: {detail}") from error
@@ -75,11 +74,17 @@ class GitHubAPIClient:
             query += f"&branch={branch}"
         return self._request("GET", path + query)
 
+    def dispatch_workflow(self, repository: str, workflow: str, branch: str, inputs: dict | None = None) -> Any:
+        self._request(
+            "POST",
+            f"/repos/{repository}/actions/workflows/{workflow}/dispatches",
+            {"ref": branch, "inputs": inputs or {}},
+        )
+        return {"accepted": True, "repository": repository, "workflow": workflow, "branch": branch}
+
 
 @dataclass
 class GitHubAdapter:
-    """لایه واسط مستقل بین Manager و سرویس GitHub."""
-
     client: GitHubClient
 
     def repository(self, repository: str) -> Any:
@@ -99,3 +104,6 @@ class GitHubAdapter:
 
     def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any:
         return self.client.workflow_runs(repository, branch, workflow)
+
+    def dispatch_workflow(self, repository: str, workflow: str, branch: str, inputs: dict | None = None) -> Any:
+        return self.client.dispatch_workflow(repository, workflow, branch, inputs)
