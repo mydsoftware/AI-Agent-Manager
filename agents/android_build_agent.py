@@ -9,7 +9,7 @@ from .base_agent import BaseAgent
 
 
 class AndroidBuildAgent(BaseAgent):
-    """ایجنت بیلد اندروید با دو موتور: Gradle native و Build Android App."""
+    """ایجنت بیلد اندروید با دو موتور اختصاصی پروژه و fallback خودکار."""
 
     name = "android-build"
 
@@ -30,25 +30,25 @@ class AndroidBuildAgent(BaseAgent):
         if not repository:
             raise ValueError("repository برای بیلد اندروید الزامی است.")
 
-        workflows = command.get("workflows") or [
-            "android-build-automated.yml",
-            "android-build.yml",
-        ]
+        workflows = command.get("workflows") or ["android-build-automated.yml", "android-build.yml"]
         attempts: list[dict] = []
 
         for workflow in workflows:
-            dispatch = self.adapter.dispatch_workflow(repository, workflow, branch, command.get("inputs", {}))
-            if not dispatch.get("accepted", False):
-                attempts.append({"workflow": workflow, "status": "dispatch_failed", "dispatch": dispatch})
-                continue
+            dispatch = {"accepted": False, "mode": "monitor"}
+            try:
+                dispatch = self.adapter.dispatch_workflow(repository, workflow, branch, command.get("inputs", {}))
+            except Exception as error:
+                # Workflowهای feature branch ممکن است از API dispatch قابل اجرا نباشند؛
+                # در این حالت اجرای push-trigger شده را مانیتور می‌کنیم.
+                dispatch = {"accepted": False, "mode": "monitor", "error": str(error)}
 
             run = self._wait_for_completion(repository, workflow, branch, timeout)
-            attempts.append({"workflow": workflow, "run": run})
+            attempts.append({"workflow": workflow, "dispatch": dispatch, "run": run})
             if run and run.get("status") == "completed" and run.get("conclusion") == "success":
-                return json.dumps({"type": "android_build", "status": "success", "attempts": attempts}, ensure_ascii=False)
-
+                return json.dumps({"type": "android_build", "status": "success", "workflow": workflow, "attempts": attempts}, ensure_ascii=False)
             if run and run.get("status") == "completed":
                 continue
+            # اگر هیچ اجرای قابل مشاهده‌ای نیست، موتور بعدی را امتحان نکن تا وضعیت مبهم ایجاد نشود.
             break
 
         return json.dumps({"type": "android_build", "status": "failed", "attempts": attempts}, ensure_ascii=False)
