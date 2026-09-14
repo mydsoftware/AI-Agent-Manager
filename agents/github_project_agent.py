@@ -44,6 +44,20 @@ class GitHubProjectAgent(BaseAgent):
         payload["repository"] = repository
         return self.github.run(Task(id=f"{task.id}:{operation}", title=f"عملیات GitHub: {operation}", agent="github", description=json.dumps(payload, ensure_ascii=False)))
 
+    @staticmethod
+    def _last_commit_sha(results: list[object]) -> str | None:
+        """آخرین SHA commit ایجادشده توسط PUT contents را استخراج می‌کند."""
+        for result in reversed(results):
+            try:
+                data = json.loads(result) if isinstance(result, str) else result
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict):
+                commit = data.get("commit")
+                if isinstance(commit, dict) and commit.get("sha"):
+                    return str(commit["sha"])
+        return None
+
     def _run_engineering_loop(self, task: Task, command: dict) -> str:
         repository = command["repository"]
         branch = command.get("branch")
@@ -51,20 +65,17 @@ class GitHubProjectAgent(BaseAgent):
         if not branch:
             raise ValueError("پارامتر branch برای چرخه مهندسی الزامی است.")
 
-        changes = command.get("changes") or []
-        if not changes and command.get("change"):
-            changes = [command["change"]]
-        repair_changes = command.get("repair_changes") or []
-        if not repair_changes and command.get("repair_change"):
-            repair_changes = [command["repair_change"]]
+        expected_sha: str | None = None
 
         def create_branch():
             return self._github_action(task, "create_branch", repository=repository, branch=branch, base=base)
 
         def apply_change():
+            nonlocal expected_sha
             results = []
             for change in changes:
                 results.append(self._github_action(task, "put_file", repository=repository, **change))
+            expected_sha = self._last_commit_sha(results)
             return json.dumps({"files_changed": len(results), "results": results}, ensure_ascii=False)
 
         def check_ci() -> str:
@@ -73,20 +84,40 @@ class GitHubProjectAgent(BaseAgent):
             runs = data.get("workflow_runs", [])
             if not runs:
                 return "pending"
-            latest = runs[0]
+
+            # Never accept an older successful run from the same branch. The
+            # exact commit SHA is authoritative whenever GitHub provides it.
+            matching = [run for run in runs if not expected_sha or run.get("head_sha") == expected_sha]
+            if not matching:
+                # Test doubles and older adapters may omit head_sha; only use
+                # that compatibility path when every returned run omits it.
+                if any(run.get("head_sha") for run in runs):
+                    return "pending"
+                matching = runs[:1]
+
+            latest = matching[0]
             return latest.get("conclusion") or latest.get("status") or "pending"
 
         def repair(status: str):
+            nonlocal expected_sha
             if not repair_changes:
                 raise RuntimeError(f"CI شکست خورد ({status}) و تغییر اصلاحی تعریف نشده است.")
             results = []
             for change in repair_changes:
                 results.append(self._github_action(task, "put_file", repository=repository, **change))
+            expected_sha = self._last_commit_sha(results) or expected_sha
             return json.dumps({"repair_files": len(results), "results": results}, ensure_ascii=False)
 
         def create_pr():
             pr = command.get("pr", {})
             return self._github_action(task, "create_pr", repository=repository, head=branch, base=base, title=pr.get("title", f"تغییر خودکار: {task.title}"), body=pr.get("body", ""), draft=pr.get("draft", True))
+
+        changes = command.get("changes") or []
+        if not changes and command.get("change"):
+            changes = [command["change"]]
+        repair_changes = command.get("repair_changes") or []
+        if not repair_changes and command.get("repair_change"):
+            repair_changes = [command["repair_change"]]
 
         result = self.engineering_loop.run(create_branch, apply_change, check_ci, repair, create_pr)
         return json.dumps({"state": result.state.value, "attempts": result.attempts, "ci_status": result.ci_status, "error": result.error}, ensure_ascii=False)
