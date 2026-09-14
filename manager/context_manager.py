@@ -22,7 +22,6 @@ class ContextManager:
 
     @staticmethod
     def estimate_tokens(messages: list[dict[str, Any]]) -> int:
-        # تخمین محافظه‌کارانه و مستقل از tokenizer؛ برای routing کافی است.
         chars = sum(len(str(m.get("content", ""))) + 16 for m in messages)
         return max(1, (chars + 3) // 4)
 
@@ -31,10 +30,11 @@ class ContextManager:
         if max_tokens <= 0:
             return {**message, "content": ""}
         content = str(message.get("content", ""))
-        max_chars = max(1, max_tokens * 4 - 16)
+        marker = "\n[context truncated]"
+        max_chars = max(1, max_tokens * 4 - 16 - len(marker))
         if len(content) <= max_chars:
             return dict(message)
-        return {**message, "content": content[:max_chars] + "\n[context truncated]"}
+        return {**message, "content": content[:max_chars] + marker}
 
     def prepare(self, messages: list[dict[str, Any]]) -> ContextResult:
         budget = self.max_tokens - self.reserve_tokens
@@ -47,14 +47,21 @@ class ContextManager:
         kept: list[dict[str, Any]] = []
         used = 0
 
+        # System messages are always preserved first, but oversized ones are trimmed
+        # instead of being silently dropped. Keep the newest non-system message too.
+        latest = rest[-1:] if rest else []
+        latest_cost = self.estimate_tokens(latest) if latest else 0
+        system_budget = max(1, budget - latest_cost)
         for message in system:
-            remaining = max(1, budget - used)
+            remaining = max(1, system_budget - used)
             trimmed = self._trim_message(message, remaining)
             cost = self.estimate_tokens([trimmed])
-            if used + cost > budget:
-                break
-            kept.append(trimmed)
-            used += cost
+            if used + cost > system_budget:
+                trimmed = self._trim_message(message, max(1, system_budget - used))
+                cost = self.estimate_tokens([trimmed])
+            if used + cost <= system_budget:
+                kept.append(trimmed)
+                used += cost
 
         kept_rest: list[dict[str, Any]] = []
         for message in reversed(rest):
