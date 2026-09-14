@@ -9,7 +9,7 @@ from .base_agent import BaseAgent
 
 
 class AndroidBuildAgent(BaseAgent):
-    """ایجنت بیلد اندروید؛ از دو مسیر Gradle و Build Android App استفاده می‌کند."""
+    """ایجنت بیلد اندروید با دو موتور: Gradle native و Build Android App."""
 
     name = "android-build"
 
@@ -26,24 +26,43 @@ class AndroidBuildAgent(BaseAgent):
 
         repository = command.get("repository")
         branch = command.get("branch", "feature/manager-core")
-        workflow = command.get("workflow", "android-build-automated.yml")
+        timeout = int(command.get("timeout", self.timeout))
         if not repository:
             raise ValueError("repository برای بیلد اندروید الزامی است.")
 
-        dispatch = self.adapter.dispatch_workflow(repository, workflow, branch, command.get("inputs", {}))
-        if not dispatch.get("accepted", False):
-            raise RuntimeError("GitHub نتوانست Workflow بیلد اندروید را اجرا کند.")
+        workflows = command.get("workflows") or [
+            "android-build-automated.yml",
+            "android-build.yml",
+        ]
+        attempts: list[dict] = []
 
-        deadline = time.monotonic() + int(command.get("timeout", self.timeout))
-        run = None
+        for workflow in workflows:
+            dispatch = self.adapter.dispatch_workflow(repository, workflow, branch, command.get("inputs", {}))
+            if not dispatch.get("accepted", False):
+                attempts.append({"workflow": workflow, "status": "dispatch_failed", "dispatch": dispatch})
+                continue
+
+            run = self._wait_for_completion(repository, workflow, branch, timeout)
+            attempts.append({"workflow": workflow, "run": run})
+            if run and run.get("status") == "completed" and run.get("conclusion") == "success":
+                return json.dumps({"type": "android_build", "status": "success", "attempts": attempts}, ensure_ascii=False)
+
+            if run and run.get("status") == "completed":
+                continue
+            break
+
+        return json.dumps({"type": "android_build", "status": "failed", "attempts": attempts}, ensure_ascii=False)
+
+    def _wait_for_completion(self, repository: str, workflow: str, branch: str, timeout: int) -> dict | None:
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             runs = self.adapter.workflow_runs(repository, branch, workflow).get("workflow_runs", [])
             if runs:
                 candidate = runs[0]
-                if candidate.get("head_branch") == branch and candidate.get("status") in {"queued", "in_progress", "completed"}:
-                    run = candidate
+                if candidate.get("head_branch") == branch:
                     if candidate.get("status") == "completed":
-                        return json.dumps({"type": "android_build", "workflow": workflow, "run": candidate}, ensure_ascii=False)
+                        return candidate
+                    time.sleep(self.poll_interval)
+                    continue
             time.sleep(self.poll_interval)
-
-        return json.dumps({"type": "android_build", "workflow": workflow, "status": "timeout", "run": run, "dispatch": dispatch}, ensure_ascii=False)
+        return {"status": "timeout", "workflow": workflow, "branch": branch}
