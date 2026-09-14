@@ -18,7 +18,8 @@ class WordPressBuildExecutor:
     """Build Plan وردپرس را به اسکلت واقعی Theme/Plugin و ZIP تبدیل می‌کند."""
 
     def execute(self, plan: WordPressBuildPlan, output_dir: str) -> WordPressBuildResult:
-        root = Path(output_dir) / plan.theme_name
+        output = Path(output_dir)
+        root = output / plan.theme_name
         root.mkdir(parents=True, exist_ok=True)
         created: list[str] = []
 
@@ -32,7 +33,14 @@ class WordPressBuildExecutor:
         }
 
         for artifact in plan.artifacts:
-            target = Path(output_dir) / artifact.path
+            artifact_path = Path(artifact.path)
+            # Theme artifacts belong inside the theme root. Plugin and other
+            # artifacts remain rooted at the WordPress package root.
+            if artifact_path.parts[:3] == ("wp-content", "themes", plan.theme_name):
+                relative = Path(*artifact_path.parts[3:])
+                target = root / relative
+            else:
+                target = output / artifact_path
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.name in templates:
                 content = templates[target.name]
@@ -41,12 +49,12 @@ class WordPressBuildExecutor:
             else:
                 content = ""
             target.write_text(content, encoding="utf-8")
-            created.append(str(target.relative_to(output_dir)))
+            created.append(str(target.relative_to(output)))
 
-        zip_path = Path(output_dir) / f"{plan.theme_name}.zip"
+        zip_path = output / f"{plan.theme_name}.zip"
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in Path(output_dir).rglob("*"):
+            for path in output.rglob("*"):
                 if path.is_file() and path != zip_path:
-                    archive.write(path, path.relative_to(output_dir))
+                    archive.write(path, path.relative_to(output))
 
         return WordPressBuildResult(str(root), str(zip_path), tuple(created))
