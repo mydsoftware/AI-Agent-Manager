@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Type
 
 from .base_agent import BaseAgent
+from .android_build_agent import AndroidBuildAgent
 from .developer_agent import DeveloperAgent
 from .github_agent import GitHubAgent
 from .github_project_agent import GitHubProjectAgent
@@ -18,15 +19,12 @@ class SpecialistRegistry:
         self._instances: Dict[str, BaseAgent] = {}
 
     def register(self, agent_class: Type[BaseAgent]) -> None:
-        """یک ایجنت تخصصی را با نام آن ثبت می‌کند."""
         self._agents[agent_class.name] = agent_class
 
     def register_instance(self, agent: BaseAgent) -> None:
-        """یک نمونه ایجنت را برای Dependency Injection ثبت می‌کند."""
         self._instances[agent.name] = agent
 
     def get(self, name: str) -> BaseAgent:
-        """یک نمونه از ایجنت موردنظر را برمی‌گرداند."""
         if name in self._instances:
             return self._instances[name]
         if name not in self._agents:
@@ -34,7 +32,6 @@ class SpecialistRegistry:
         return self._agents[name]()
 
     def names(self) -> list[str]:
-        """نام تمام ایجنت‌های ثبت‌شده را برمی‌گرداند."""
         return sorted(set(self._agents) | set(self._instances))
 
 
@@ -46,4 +43,5 @@ def create_default_registry() -> SpecialistRegistry:
     registry.register(QAAgent)
     registry.register(GitHubAgent)
     registry.register(GitHubProjectAgent)
+    registry.register(AndroidBuildAgent)
     return registry
