@@ -37,6 +37,14 @@ class FakeAdapter:
         self.calls.append(("workflow_runs", branch))
         return self.workflow_results.pop(0)
 
+    def workflow_log(self, repository, branch, head_sha=None, workflow=None):
+        self.calls.append(("workflow_log", head_sha))
+        return {"logs": "pytest: failure in tmp/change.txt"}
+
+    def compare(self, repository, base, head):
+        self.calls.append(("compare", base, head))
+        return {"files": [{"filename": "tmp/change.txt", "patch": "+نسخه اصلاح‌شده"}]}
+
 
 def _task():
     return Task(
@@ -66,6 +74,8 @@ def test_engineering_loop_runs_repair_and_then_pr():
     assert result["ci_status"] == "success"
     assert any(call[0] == "create_branch" for call in adapter.calls)
     assert sum(call[0] == "put_file" for call in adapter.calls) == 2
+    assert any(call[0] == "workflow_log" for call in adapter.calls)
+    assert any(call[0] == "compare" for call in adapter.calls)
     assert any(call[0] == "create_pr" for call in adapter.calls)
 
 
