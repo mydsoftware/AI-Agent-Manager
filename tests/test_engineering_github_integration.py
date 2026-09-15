@@ -8,9 +8,9 @@ from manager.task import Task
 
 
 class FakeAdapter:
-    def __init__(self):
+    def __init__(self, workflow_results=None):
         self.calls = []
-        self.workflow_results = [
+        self.workflow_results = workflow_results or [
             {"workflow_runs": [{"status": "completed", "conclusion": "failure"}]},
             {"workflow_runs": [{"status": "completed", "conclusion": "success"}]},
         ]
@@ -23,7 +23,7 @@ class FakeAdapter:
 
     def put_file(self, repository, path, content, message, branch, sha=None):
         self.calls.append(("put_file", path, branch, content))
-        return {"ok": True}
+        return {"ok": True, "commit": {"sha": f"sha-{len([c for c in self.calls if c[0] == 'put_file'])}"}}
 
     def create_branch(self, repository, branch, base):
         self.calls.append(("create_branch", branch, base))
@@ -38,10 +38,8 @@ class FakeAdapter:
         return self.workflow_results.pop(0)
 
 
-def test_engineering_loop_runs_repair_and_then_pr():
-    adapter = FakeAdapter()
-    agent = GitHubProjectAgent(GitHubAgent(adapter))
-    task = Task(
+def _task():
+    return Task(
         id="integration-1",
         title="تست چرخه مهندسی",
         agent="github-project",
@@ -56,11 +54,32 @@ def test_engineering_loop_runs_repair_and_then_pr():
         }, ensure_ascii=False),
     )
 
-    result = json.loads(agent.run(task))
+
+def test_engineering_loop_runs_repair_and_then_pr():
+    adapter = FakeAdapter()
+    agent = GitHubProjectAgent(GitHubAgent(adapter))
+
+    result = json.loads(agent.run(_task()))
 
     assert result["state"] == "done"
     assert result["attempts"] == 2
     assert result["ci_status"] == "success"
     assert any(call[0] == "create_branch" for call in adapter.calls)
     assert sum(call[0] == "put_file" for call in adapter.calls) == 2
+    assert any(call[0] == "create_pr" for call in adapter.calls)
+
+
+def test_engineering_loop_waits_for_ci_before_pr(monkeypatch):
+    monkeypatch.setenv("AI_AGENT_MANAGER_CI_POLL_INTERVAL", "0.01")
+    adapter = FakeAdapter([
+        {"workflow_runs": [{"status": "in_progress", "head_sha": "sha-1"}]},
+        {"workflow_runs": [{"status": "completed", "conclusion": "success", "head_sha": "sha-1"}]},
+    ])
+    agent = GitHubProjectAgent(GitHubAgent(adapter))
+
+    result = json.loads(agent.run(_task()))
+
+    assert result["state"] == "done"
+    assert result["ci_status"] == "success"
+    assert sum(call[0] == "workflow_runs" for call in adapter.calls) == 2
     assert any(call[0] == "create_pr" for call in adapter.calls)
