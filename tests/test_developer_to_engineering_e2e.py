@@ -72,5 +72,12 @@ def test_developer_plan_reaches_engineering_loop_and_pr():
     assert result["attempts"] == 2
     assert result["ci_status"] == "success"
     assert [call["action"] for call in fake.calls] == [
-        "create_branch", "put_file", "workflow_runs", "put_file", "workflow_runs", "create_pr"
+        "create_branch",
+        "put_file",
+        "workflow_runs",
+        "workflow_log",
+        "put_file",
+        "workflow_runs",
+        "compare",
+        "create_pr",
     ]
