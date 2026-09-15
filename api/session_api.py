@@ -15,8 +15,13 @@ def create_session_blueprint(
     api = Blueprint("session_api", __name__)
 
     def require_key():
-        if api_auth.enabled and not api_auth.validate(request.headers.get("X-API-Key")):
-            return jsonify({"error": "کلید دسترسی معتبر نیست."}), 401
+        if api_auth.enabled:
+            provided_key = api_auth.extract_key(
+                request.headers.get("X-API-Key"),
+                request.headers.get("Authorization"),
+            )
+            if not api_auth.validate(provided_key):
+                return jsonify({"error": "کلید دسترسی معتبر نیست."}), 401
         return None
 
     @api.post("/api/session/start")
