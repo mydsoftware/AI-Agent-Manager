@@ -37,8 +37,13 @@ def create_app(
             return None
         if request.path == "/api/health":
             return None
-        if request.path.startswith("/api/") and not api_auth.validate(request.headers.get("X-API-Key")):
-            return jsonify({"error": "کلید دسترسی معتبر نیست."}), 401
+        if request.path.startswith("/api/"):
+            provided_key = api_auth.extract_key(
+                request.headers.get("X-API-Key"),
+                request.headers.get("Authorization"),
+            )
+            if not api_auth.validate(provided_key):
+                return jsonify({"error": "کلید دسترسی معتبر نیست."}), 401
         return None
 
     @app.get("/")
