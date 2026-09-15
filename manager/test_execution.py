@@ -15,6 +15,9 @@ class GeneratedTestSuite:
 class TestExecutionManager:
     """Test Generator را به اجرای واقعی QA متصل می‌کند."""
 
+    # This is a production manager, not a pytest test class.
+    __test__ = False
+
     def __init__(self, generator: TestGeneratorAgent | None = None) -> None:
         self.generator = generator or TestGeneratorAgent()
 
