@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 
 from manager.engineering_loop import EngineeringLoop
 from manager.task import Task
@@ -79,24 +81,46 @@ class GitHubProjectAgent(BaseAgent):
             return json.dumps({"files_changed": len(results), "results": results}, ensure_ascii=False)
 
         def check_ci() -> str:
-            raw = self._github_action(task, "workflow_runs", repository=repository, branch=branch, workflow=command.get("workflow"))
-            data = json.loads(raw)
-            runs = data.get("workflow_runs", [])
-            if not runs:
-                return "pending"
+            """GitHub Actions پایان واقعی همان commit را صبر می‌کند.
 
-            # Never accept an older successful run from the same branch. The
-            # exact commit SHA is authoritative whenever GitHub provides it.
-            matching = [run for run in runs if not expected_sha or run.get("head_sha") == expected_sha]
-            if not matching:
-                # Test doubles and older adapters may omit head_sha; only use
-                # that compatibility path when every returned run omits it.
-                if any(run.get("head_sha") for run in runs):
-                    return "pending"
-                matching = runs[:1]
+            قبلاً اولین وضعیت `queued/in_progress` مستقیماً به EngineeringLoop
+            برمی‌گشت و چرخه در حالت VERIFY متوقف می‌شد. اکنون تا timeout منتظر
+            همان SHA می‌مانیم؛ در timeout وضعیت صریح `timeout` برمی‌گردد تا
+            FailureAnalyzer/Repair بتوانند چرخه را ادامه دهند.
+            """
+            timeout = max(1, int(os.getenv("AI_AGENT_MANAGER_CI_TIMEOUT", "900")))
+            interval = max(0.2, float(os.getenv("AI_AGENT_MANAGER_CI_POLL_INTERVAL", "2")))
+            deadline = time.monotonic() + timeout
 
-            latest = matching[0]
-            return latest.get("conclusion") or latest.get("status") or "pending"
+            while True:
+                raw = self._github_action(
+                    task,
+                    "workflow_runs",
+                    repository=repository,
+                    branch=branch,
+                    workflow=command.get("workflow"),
+                )
+                data = json.loads(raw)
+                runs = data.get("workflow_runs", [])
+
+                # Never accept an older successful run from the same branch.
+                # The exact commit SHA is authoritative whenever GitHub provides it.
+                matching = [run for run in runs if not expected_sha or run.get("head_sha") == expected_sha]
+                if not matching:
+                    # Test doubles and older adapters may omit head_sha; only use
+                    # that compatibility path when every returned run omits it.
+                    if runs and not any(run.get("head_sha") for run in runs):
+                        matching = runs[:1]
+
+                if matching:
+                    latest = matching[0]
+                    status = str(latest.get("conclusion") or latest.get("status") or "pending").lower()
+                    if status in {"success", "passed", "pass", "failure", "failed", "cancelled", "timed_out", "action_required", "neutral", "skipped"}:
+                        return status
+
+                if time.monotonic() >= deadline:
+                    return "timeout"
+                time.sleep(interval)
 
         def repair(status: str):
             nonlocal expected_sha
