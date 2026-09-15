@@ -55,6 +55,19 @@ class GitHubAgent(BaseAgent):
             )
         elif action == "workflow_runs":
             result = self.adapter.workflow_runs(repository, command.get("branch"), command.get("workflow"))
+        elif action == "workflow_log":
+            result = self.adapter.workflow_log(
+                repository,
+                command.get("branch"),
+                command.get("head_sha"),
+                command.get("workflow"),
+            )
+        elif action == "compare":
+            base = command.get("base")
+            head = command.get("head")
+            if not all([base, head]):
+                raise ValueError("پارامترهای base و head برای compare الزامی هستند.")
+            result = self.adapter.compare(repository, base, head)
         else:
             raise ValueError(f"عملیات GitHub پشتیبانی نمی‌شود: {action}")
 
