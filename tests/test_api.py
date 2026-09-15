@@ -78,7 +78,7 @@ def test_run_with_explicit_agent_preserves_agent(tmp_path):
     assert calls == [("تست پروژه", "qa")]
 
 
-def test_protected_api_requires_key(tmp_path):
+def test_protected_api_accepts_api_key_and_bearer(tmp_path):
     auth = APIAuthenticator.__new__(APIAuthenticator)
     auth.environment_name = "TEST_KEY"
     auth.api_key = "secret"
@@ -87,7 +87,21 @@ def test_protected_api_requires_key(tmp_path):
     assert client.get("/api/agents").status_code == 401
     assert client.get("/api/agents", headers={"X-API-Key": "wrong"}).status_code == 401
     assert client.get("/api/agents", headers={"X-API-Key": "secret"}).status_code == 200
+    assert client.get("/api/agents", headers={"Authorization": "Bearer secret"}).status_code == 200
+    assert client.get("/api/agents", headers={"Authorization": "Basic secret"}).status_code == 401
     assert client.get("/api/health").status_code == 200
+
+
+def test_authenticator_extract_key_prefers_api_key_and_rejects_non_bearer():
+    auth = APIAuthenticator.__new__(APIAuthenticator)
+    auth.environment_name = "TEST_KEY"
+    auth.api_key = "secret"
+
+    assert auth.extract_key(" secret ", "Bearer other") == "secret"
+    assert auth.extract_key(None, "Bearer secret") == "secret"
+    assert auth.extract_key(None, "bearer   secret") == "secret"
+    assert auth.extract_key(None, "Basic secret") is None
+    assert auth.extract_key(None, "Bearer") is None
 
 
 def test_run_rejects_oversized_request(tmp_path):
