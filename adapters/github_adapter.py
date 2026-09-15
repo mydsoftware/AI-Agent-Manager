@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import os
+import zipfile
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError
@@ -43,6 +45,23 @@ class GitHubAPIClient:
             with urlopen(request, timeout=30) as response:
                 raw = response.read().decode("utf-8")
                 return json.loads(raw) if raw else {"accepted": True}
+        except HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"GitHub API خطای {error.code}: {detail}") from error
+
+    def _request_bytes(self, method: str, path: str) -> bytes:
+        if not self.token:
+            raise RuntimeError("GITHUB_TOKEN تنظیم نشده است.")
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self.token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "AI-Agent-Manager",
+        }
+        request = Request(f"{self.api_url}{path}", headers=headers, method=method)
+        try:
+            with urlopen(request, timeout=60) as response:
+                return response.read()
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"GitHub API خطای {error.code}: {detail}") from error
@@ -98,8 +117,11 @@ class GitHubAPIClient:
         for job in jobs:
             if job.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required"}:
                 try:
-                    raw = self._request("GET", f"/repos/{repository}/actions/jobs/{job['id']}/logs")
-                    logs.append(json.dumps(raw, ensure_ascii=False) if not isinstance(raw, str) else raw)
+                    raw = self._request_bytes("GET", f"/repos/{repository}/actions/jobs/{job['id']}/logs")
+                    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                        for name in archive.namelist():
+                            if not name.endswith("/"):
+                                logs.append(f"### {job.get('name', job['id'])} / {name}\n{archive.read(name).decode('utf-8', errors='replace')}")
                 except Exception as error:
                     logs.append(f"job {job.get('name')}: دریافت log شکست خورد: {error}")
         return {
