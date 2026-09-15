@@ -16,6 +16,8 @@ class GitHubClient(Protocol):
     def create_branch(self, repository: str, branch: str, base: str) -> Any: ...
     def create_pull_request(self, repository: str, head: str, base: str, title: str, body: str = "", draft: bool = True) -> Any: ...
     def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any: ...
+    def workflow_log(self, repository: str, branch: str, head_sha: str | None = None, workflow: str | None = None) -> Any: ...
+    def compare(self, repository: str, base: str, head: str) -> Any: ...
     def dispatch_workflow(self, repository: str, workflow: str, branch: str, inputs: dict | None = None) -> Any: ...
 
 
@@ -67,8 +69,6 @@ class GitHubAPIClient:
                 {"ref": f"refs/heads/{branch}", "sha": base_ref["object"]["sha"]},
             )
         except RuntimeError as error:
-            # Engineering loops are retryable. If the branch already exists,
-            # reuse it instead of failing the whole loop on GitHub's 422.
             if "خطای 422" not in str(error):
                 raise
             return self._request("GET", f"/repos/{repository}/git/ref/heads/{branch}")
@@ -84,6 +84,36 @@ class GitHubAPIClient:
         if branch:
             query += f"&branch={branch}"
         return self._request("GET", path + query)
+
+    def workflow_log(self, repository: str, branch: str, head_sha: str | None = None, workflow: str | None = None) -> Any:
+        runs = self.workflow_runs(repository, branch, workflow).get("workflow_runs", [])
+        matching = [run for run in runs if not head_sha or run.get("head_sha") == head_sha]
+        if not matching and runs and not any(run.get("head_sha") for run in runs):
+            matching = runs[:1]
+        if not matching:
+            return {"available": False, "message": "اجرای CI متناظر پیدا نشد."}
+        run = matching[0]
+        jobs = self._request("GET", f"/repos/{repository}/actions/runs/{run['id']}/jobs?per_page=100").get("jobs", [])
+        logs: list[str] = []
+        for job in jobs:
+            if job.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required"}:
+                try:
+                    raw = self._request("GET", f"/repos/{repository}/actions/jobs/{job['id']}/logs")
+                    logs.append(json.dumps(raw, ensure_ascii=False) if not isinstance(raw, str) else raw)
+                except Exception as error:
+                    logs.append(f"job {job.get('name')}: دریافت log شکست خورد: {error}")
+        return {
+            "available": True,
+            "run_id": run.get("id"),
+            "run_number": run.get("run_number"),
+            "head_sha": run.get("head_sha"),
+            "status": run.get("status"),
+            "conclusion": run.get("conclusion"),
+            "logs": "\n\n".join(logs),
+        }
+
+    def compare(self, repository: str, base: str, head: str) -> Any:
+        return self._request("GET", f"/repos/{repository}/compare/{base}...{head}")
 
     def dispatch_workflow(self, repository: str, workflow: str, branch: str, inputs: dict | None = None) -> Any:
         self._request(
@@ -115,6 +145,12 @@ class GitHubAdapter:
 
     def workflow_runs(self, repository: str, branch: str | None = None, workflow: str | None = None) -> Any:
         return self.client.workflow_runs(repository, branch, workflow)
+
+    def workflow_log(self, repository: str, branch: str, head_sha: str | None = None, workflow: str | None = None) -> Any:
+        return self.client.workflow_log(repository, branch, head_sha, workflow)
+
+    def compare(self, repository: str, base: str, head: str) -> Any:
+        return self.client.compare(repository, base, head)
 
     def dispatch_workflow(self, repository: str, workflow: str, branch: str, inputs: dict | None = None) -> Any:
         return self.client.dispatch_workflow(repository, workflow, branch, inputs)
