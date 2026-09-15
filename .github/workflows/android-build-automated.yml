@@ -29,7 +29,7 @@ jobs:
         working-directory: android
     steps:
       - name: دریافت کد پروژه
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: بررسی پروژه Android/Gradle
         run: test -f ./gradlew || { echo 'پروژه Android/Gradle در مسیر android پیدا نشد.'; exit 1; }
       - name: تنظیم JDK 17
