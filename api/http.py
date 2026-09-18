@@ -257,3 +257,10 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
     def health(): return jsonify({"status": "ok"})
 
     return app
+
+
+
+def create_default_app() -> Flask:
+    """سازنده پیش‌فرض برای سازگاری با تست‌ها و مصرف‌کنندگان قدیمی."""
+    from api.agent_team_api import AgentTeamAPI
+    return create_app(AgentTeamAPI())
