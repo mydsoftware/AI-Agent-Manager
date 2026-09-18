@@ -1,0 +1,75 @@
+name: ساخت خودکار APK و AAB
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'release/**'
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build-automated.yml'
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android-build-automated.yml'
+
+permissions:
+  contents: read
+
+env:
+  main_project_module: app
+  android_project_path: android
+
+jobs:
+  build:
+    name: Automated Android APK/AAB
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - name: دریافت کد پروژه
+        uses: actions/checkout@v6
+      - name: بررسی پروژه Android/Gradle
+        run: test -f ./gradlew || { echo 'پروژه Android/Gradle در مسیر android پیدا نشد.'; exit 1; }
+      - name: تنظیم JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+          cache: gradle
+      - name: تنظیم Gradle Wrapper
+        run: chmod +x ./gradlew
+      - name: اجرای تست‌های Gradle
+        run: ./gradlew test
+      - name: Build کامل Gradle
+        run: ./gradlew build
+      - name: ساخت APK Debug
+        run: ./gradlew assembleDebug
+      - name: ساخت APK Release
+        run: ./gradlew assembleRelease
+      - name: ساخت AAB Release
+        run: ./gradlew ${main_project_module}:bundleRelease
+      - name: ثبت نام فایل‌ها
+        working-directory: .
+        run: |
+          echo '### Android Build Outputs' >> "$GITHUB_STEP_SUMMARY"
+          find android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -print | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: آپلود APK Debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-debug-${{ github.sha }}
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/debug/*.apk
+      - name: آپلود APK Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-release-${{ github.sha }}
+          if-no-files-found: error
+          path: android/app/build/outputs/apk/release/*.apk
+      - name: آپلود AAB Release
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-release-${{ github.sha }}
+          if-no-files-found: error
+          path: android/app/build/outputs/bundle/release/*.aab

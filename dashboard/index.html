@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AI-Agent-Manager</title>
+  <link rel="stylesheet" href="/dashboard/static/app.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">AI</span><div><strong>AI-Agent-Manager</strong><small>Control Plane</small></div></div>
+    <nav>
+      <button class="nav active" data-view="overview">نمای کلی</button>
+      <button class="nav" data-view="agents">ایجنت‌ها</button>
+      <button class="nav" data-view="sessions">Sessionها</button>
+      <button class="nav" data-view="activity">فعالیت</button>
+      <button class="nav" data-view="settings">تنظیمات</button>
+    </nav>
+    <div class="connection"><span id="healthDot" class="dot"></span><span id="healthText">در حال اتصال...</span></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><h1 id="viewTitle">نمای کلی</h1><p>مدیریت پروژه‌ها، ایجنت‌ها و اجرای درخواست‌ها</p></div><button id="refresh" class="ghost">↻ بروزرسانی</button></header>
+
+    <section id="overview" class="view active-view">
+      <div class="hero"><div><span class="eyebrow">LOCAL AI FACTORY</span><h2>درخواستت را بده، Manager اجرا را مدیریت می‌کند.</h2><p>Intent → Plan → Agents → Test → Delivery</p></div><div class="hero-orb">◎</div></div>
+      <div class="grid stats"><article><span>وضعیت API</span><strong id="apiStatus">—</strong></article><article><span>ایجنت فعال</span><strong id="agentCount">—</strong></article><article><span>Session</span><strong id="sessionState">آماده</strong></article><article><span>مدل اصلی</span><strong>Qwen3.5 9B</strong></article></div>
+      <section class="panel run-panel"><div class="panel-head"><div><h3>اجرای درخواست جدید</h3><p>Manager به‌صورت خودکار Agent مناسب را انتخاب می‌کند.</p></div><span class="badge">AUTO ROUTING</span></div><textarea id="requestInput" placeholder="مثلاً: یک سایت فروشگاهی فارسی برای محصولات دیجیتال بساز"></textarea><div class="actions"><button id="runBtn" class="primary">▶ اجرای درخواست</button><span id="runState"></span></div></section>
+      <section class="panel"><div class="panel-head"><h3>آخرین نتیجه</h3></div><pre id="output" class="output">هنوز اجرایی انجام نشده است.</pre></section>
+    </section>
+
+    <section id="agents" class="view"><div class="panel"><div class="panel-head"><div><h3>Agent Registry</h3><p>کنترل وضعیت ایجنت‌های متصل به Manager</p></div></div><div id="agentsList" class="agent-list"></div></div></section>
+    <section id="sessions" class="view"><div class="panel"><div class="panel-head"><div><h3>Sessionها</h3><p>Session فعلی داشبورد و وضعیت اجرای آن</p></div></div><div class="session-card"><span>Session ID</span><code id="sessionId">—</code><span>وضعیت</span><strong id="sessionStatus">آماده</strong></div></div></section>
+    <section id="activity" class="view"><div class="panel"><div class="panel-head"><h3>Activity</h3></div><div id="activityList" class="activity-list"><div class="empty">هنوز فعالیتی ثبت نشده است.</div></div></div></section>
+    <section id="settings" class="view"><div class="panel"><div class="panel-head"><div><h3>تنظیمات اتصال</h3><p>اگر API با AI_AGENT_MANAGER_API_KEY محافظت شده است، کلید فقط در مرورگر فعلی نگهداری می‌شود.</p></div></div><label class="field"><span>API Key</span><input id="apiKey" type="password" autocomplete="off" placeholder="X-API-Key"></label><div class="actions"><button id="saveKey" class="primary">ذخیره کلید</button><button id="clearKey" class="ghost">پاک کردن</button><span id="keyState"></span></div></div></section>
+  </main>
+  <script src="/dashboard/static/app.js"></script>
+</body>
+</html>
