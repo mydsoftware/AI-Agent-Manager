@@ -8,6 +8,7 @@ from api import execute
 from ai_gateway import AIGateway, GatewayConfig
 from game.factory import GameFactory
 from manager.api_guard import APIGuard
+from manager.auth import APIAuthenticator
 from manager.execution_store import ExecutionStore
 from manager.observability import Observability
 from manager.policy import authorize
