@@ -15,6 +15,7 @@ class UserSessionResult:
     question: str | None
     context: dict[str, Any]
     output: dict[str, Any] | None = None
+    answers: list[str] | None = None
 
 
 class UserSessionManager:
@@ -104,4 +105,5 @@ class UserSessionManager:
             session_id=session["session_id"], request=session["request"], status=session["status"],
             stage=session["stage"], question=session.get("question"),
             context=session.get("context", {}), output=session.get("output"),
+            answers=[item.get("answer", "") for item in session.get("context", {}).get("user_answers", [])],
         )
