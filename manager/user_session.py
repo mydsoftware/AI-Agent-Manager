@@ -1,45 +1,107 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from pathlib import Path
 import json
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 
-@dataclass
-class UserSession:
+@dataclass(frozen=True)
+class UserSessionResult:
     session_id: str
     request: str
-    status: str = "running"
-    stage: str = "requirements"
-    question: str | None = None
-    answers: list[str] | None = None
-    output: Any = None
-
-    def __post_init__(self) -> None:
-        if self.answers is None:
-            self.answers = []
+    status: str
+    stage: str
+    question: str | None
+    context: dict[str, Any]
+    output: dict[str, Any] | None = None
 
 
 class UserSessionManager:
-    def __init__(self, root: str = "data/sessions") -> None:
+    """رابط پایدار بین درخواست کاربر، سؤال شفاف‌سازی و ادامه اجرای Manager."""
+
+    def __init__(self, root: str = "data/sessions", max_session_id_length: int = 128) -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
+        self.max_session_id_length = max(1, max_session_id_length)
+
+    def start(self, session_id: str, request: str) -> UserSessionResult:
+        if not request.strip():
+            raise ValueError("درخواست نمی‌تواند خالی باشد.")
+        self._path(session_id)
+        session = {
+            "session_id": session_id,
+            "request": request,
+            "status": "running",
+            "stage": "requirements",
+            "question": None,
+            "context": {},
+            "output": None,
+        }
+        return self._save(session)
+
+    def ask(self, session_id: str, question: str, stage: str = "requirements") -> UserSessionResult:
+        session = self._load(session_id)
+        session.update({"status": "waiting_for_user", "stage": stage, "question": question})
+        return self._save(session)
+
+    def answer(self, session_id: str, answer: str, next_stage: str = "planning") -> UserSessionResult:
+        if not answer.strip():
+            raise ValueError("پاسخ کاربر نمی‌تواند خالی باشد.")
+        session = self._load(session_id)
+        if session["status"] != "waiting_for_user":
+            raise ValueError("این Session در انتظار پاسخ کاربر نیست.")
+        context = dict(session.get("context", {}))
+        context.setdefault("user_answers", []).append({"question": session.get("question"), "answer": answer})
+        session.update({"status": "running", "stage": next_stage, "question": None, "context": context})
+        return self._save(session)
+
+    def complete(self, session_id: str, output: dict[str, Any]) -> UserSessionResult:
+        session = self._load(session_id)
+        session.update({"status": "completed", "stage": "delivery", "question": None, "output": output})
+        return self._save(session)
+
+    def fail(self, session_id: str, error: str, stage: str = "execution") -> UserSessionResult:
+        session = self._load(session_id)
+        session.update({"status": "failed", "stage": stage, "question": None, "output": {"error": error}})
+        return self._save(session)
+
+    def get(self, session_id: str) -> UserSessionResult:
+        return self._result(self._load(session_id))
 
     def _path(self, session_id: str) -> Path:
-        return self.root / f"{session_id}.json"
+        raw = str(session_id).strip()
+        if not raw or len(raw) > self.max_session_id_length:
+            raise ValueError("session_id معتبر نیست.")
+        if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for ch in raw):
+            raise ValueError("session_id فقط می‌تواند شامل حروف، اعداد، - و _ باشد.")
+        return self.root / f"{raw}.json"
 
-    def create(self, session_id: str, request: str) -> UserSession:
-        return self.save(UserSession(session_id=session_id, request=request))
+    def _load(self, session_id: str) -> dict[str, Any]:
+        path = self._path(session_id)
+        if not path.exists():
+            raise KeyError(f"Session پیدا نشد: {session_id}")
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise RuntimeError("اطلاعات Session قابل خواندن نیست.") from error
 
-    def save(self, session: UserSession) -> UserSession:
-        self._path(session.session_id).write_text(
-            json.dumps(asdict(session), ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    def _save(self, session: dict[str, Any]) -> UserSessionResult:
+        path = self._path(session["session_id"])
+        temporary = path.with_suffix(f".json.{id(session)}.tmp")
+        try:
+            temporary.write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(path)
+        except OSError as error:
+            raise RuntimeError("ذخیره Session انجام نشد.") from error
+        finally:
+            temporary.unlink(missing_ok=True)
+        return self._result(session)
+
+    @staticmethod
+    def _result(session: dict[str, Any]) -> UserSessionResult:
+        return UserSessionResult(
+            session_id=session["session_id"], request=session["request"], status=session["status"],
+            stage=session["stage"], question=session.get("question"),
+            context=session.get("context", {}), output=session.get("output"),
         )
-        return session
-
-    def load(self, session_id: str) -> UserSession:
-        return UserSession(**json.loads(self._path(session_id).read_text(encoding="utf-8")))
-
-    def update(self, session: UserSession) -> UserSession:
-        return self.save(session)
