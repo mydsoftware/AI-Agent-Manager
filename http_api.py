@@ -158,7 +158,7 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
             try:
                 state = self.session_runtime.resume(session_id)
                 self._send_json(200, state.__dict__)
-            except FileNotFoundError:
+            except (FileNotFoundError, KeyError):
                 self._send_json(404, {"error": "Session پیدا نشد."})
             return
         self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
