@@ -18,6 +18,20 @@ class UserSessionResult:
     answers: list[str] | None = None
 
 
+@dataclass
+class UserSession:
+    session_id: str
+    request: str
+    status: str = "running"
+    stage: str = "requirements"
+    question: str | None = None
+    answers: list[str] | None = None
+    output: Any = None
+
+    def __post_init__(self) -> None:
+        if self.answers is None:
+            self.answers = []
+
 class UserSessionManager:
     """رابط پایدار بین درخواست کاربر، سؤال شفاف‌سازی و ادامه اجرای Manager."""
 
