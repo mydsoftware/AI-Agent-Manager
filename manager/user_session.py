@@ -26,6 +26,14 @@ class UserSessionManager:
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_session_id_length = max(1, max_session_id_length)
 
+    def create(self, session_id: str, request: str) -> UserSession:
+        self.start(session_id, request)
+        return self.load(session_id)
+
+    def load(self, session_id: str) -> UserSession:
+        data = self._load(session_id)
+        return UserSession(session_id=data["session_id"], request=data["request"], status=data["status"], stage=data["stage"], question=data.get("question"), answers=[x.get("answer", "") for x in data.get("context", {}).get("user_answers", [])], output=data.get("output"))
+
     def start(self, session_id: str, request: str) -> UserSessionResult:
         if not request.strip():
             raise ValueError("درخواست نمی‌تواند خالی باشد.")
