@@ -87,6 +87,14 @@ def create_app(team_api: AgentTeamAPI | None = None, runtime: ManagerRuntime | N
     workflows = workflow_store or WorkflowStore(projects.database_path)
     workflow = WorkflowEngine(manager_runtime)
 
+    @app.post("/api/wordpress/connection/check")
+    def wordpress_connection_check():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "payload باید object باشد."}), 400
+        result = connection_api.post_check(payload)
+        return jsonify(result.body), result.status
+
     @app.get("/api/agents")
     def list_agents(): return jsonify(team_api.list_agents())
 
