@@ -43,7 +43,10 @@ class SessionRuntime:
                 f"{item['question']} {item['answer']}" for item in answers
             )
         agent = "github" if any(word in request.lower() for word in ("github", "گیتهاب", "repository", "مخزن")) else "developer"
-        report = self.runtime.run(request, agent)
+        try:
+            report = self.runtime.run(request, agent)
+        except TypeError:
+            report = self.runtime.run(request)
         data = report if isinstance(report, dict) else report.to_dict()
         if "report" not in data:
             data = {"agent": agent, "report": data}
