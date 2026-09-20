@@ -43,7 +43,10 @@ class SessionRuntime:
                 f"{item['question']} {item['answer']}" for item in answers
             )
         report = self.runtime.run(request)
-        return self.sessions.complete(session.session_id, report if isinstance(report, dict) else report.to_dict())
+        data = report if isinstance(report, dict) else report.to_dict()
+        if "report" not in data:
+            data = {"report": data}
+        return self.sessions.complete(session.session_id, data)
 
     @classmethod
     def _is_ambiguous(cls, request: str) -> bool:
