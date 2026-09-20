@@ -42,10 +42,13 @@ class SessionRuntime:
             request = f"{request}\n\nاطلاعات تکمیلی کاربر:\n" + "\n".join(
                 f"{item['question']} {item['answer']}" for item in answers
             )
-        report = self.runtime.run(request)
+        agent = "github" if any(word in request.lower() for word in ("github", "گیتهاب", "repository", "مخزن")) else "developer"
+        report = self.runtime.run(request, agent)
         data = report if isinstance(report, dict) else report.to_dict()
         if "report" not in data:
-            data = {"report": data}
+            data = {"agent": agent, "report": data}
+        else:
+            data.setdefault("agent", agent)
         return self.sessions.complete(session.session_id, data)
 
     @classmethod
