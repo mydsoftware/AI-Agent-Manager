@@ -29,6 +29,12 @@ class SessionRuntime:
     def get(self, session_id: str) -> UserSessionResult:
         return self.sessions.get(session_id)
 
+    def resume(self, session_id: str) -> UserSessionResult:
+        session = self.sessions.get(session_id)
+        if session.status in {"completed", "waiting_for_user"}:
+            return session
+        return self._execute(session)
+
     def _execute(self, session: UserSessionResult) -> UserSessionResult:
         request = session.request
         answers = session.context.get("user_answers", [])
