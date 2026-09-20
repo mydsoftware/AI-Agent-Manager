@@ -1,0 +1,2 @@
+import {NextResponse} from "next/server";import {desc} from "drizzle-orm";import {db} from "@/db";import {leads} from "@/db/schema";import {requireAdmin} from "@/lib/auth";
+export async function GET(){try{await requireAdmin()}catch{return NextResponse.json({error:"UNAUTHORIZED"},{status:401})}const rows=await db.select().from(leads).orderBy(desc(leads.createdAt));return NextResponse.json(rows)}
