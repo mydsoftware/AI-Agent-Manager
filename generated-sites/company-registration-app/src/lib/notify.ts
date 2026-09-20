@@ -1,0 +1,1 @@
+export async function notifyNewLead(payload:Record<string,unknown>){const url=process.env.NOTIFICATION_WEBHOOK_URL;if(!url)return;try{await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({event:"new_lead",...payload})})}catch{}}
