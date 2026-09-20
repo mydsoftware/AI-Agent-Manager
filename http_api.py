@@ -39,9 +39,10 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
 
     def _authorized(self) -> bool:
         # حالت توسعه: اگر کلید محیطی تنظیم نشده باشد، بدون احراز هویت عبور کن
-        if not self.guard.authenticator.enabled:
+        guard = APIGuard(APIAuthenticator())
+        if not guard.authenticator.enabled:
             return True
-        if self.guard.authorized(self.headers.get("X-API-Key")):
+        if guard.authorized(self.headers.get("X-API-Key")):
             return True
         self._send_json(401, {"error": "کلید دسترسی معتبر نیست."})
         return False
