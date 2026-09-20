@@ -43,7 +43,7 @@ class UserSessionManager:
 
     def ask(self, session_id: str, question: str, stage: str = "requirements") -> UserSessionResult:
         session = self._load(session_id)
-        session.update({"status": "waiting_for_user", "stage": stage, "question": question})
+        session.update({"status": "waiting_for_user", "stage": "clarification" if stage == "requirements" else stage, "question": question})
         return self._save(session)
 
     def answer(self, session_id: str, answer: str, next_stage: str = "planning") -> UserSessionResult:
@@ -59,7 +59,7 @@ class UserSessionManager:
 
     def complete(self, session_id: str, output: dict[str, Any]) -> UserSessionResult:
         session = self._load(session_id)
-        session.update({"status": "completed", "stage": "delivery", "question": None, "output": output})
+        session.update({"status": "completed", "stage": "delivery", "question": None, "output": {"report": output} if "report" not in output else output})
         return self._save(session)
 
     def fail(self, session_id: str, error: str, stage: str = "execution") -> UserSessionResult:
