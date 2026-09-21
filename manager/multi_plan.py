@@ -70,8 +70,8 @@ class MultiAgentPlanner:
             tasks.append(Task("qa-1", "آزمون نهایی", intent.goal, "qa", [tasks[-1].id], capability="coding"))
 
         github_requested = any(word in text for word in ("github", "گیتهاب", "مخزن", "repository"))
-        has_developer = any(task.agent == "developer" for task in tasks)
-        if github_requested and not has_developer:
+        has_github = any(task.agent == "github" for task in tasks)
+        if github_requested and not has_github:
             tasks.append(Task("github-1", "عملیات GitHub", intent.goal, "github", [tasks[-1].id] if tasks else [], capability="general"))
 
         return MultiAgentPlan(tasks)
