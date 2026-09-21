@@ -38,6 +38,16 @@ class MultiAgentPlanner:
                 "github", capability="general",
             ))
 
+        mixed_research = any(word in text for word in ("تحقیق", "research")) and any(word in text for word in ("کدنویسی", "کد", "code", "پیاده", "توسعه"))
+        if mixed_research:
+            tasks.append(Task("research-1", "تحلیل و تحقیق", intent.goal, "research", capability="general"))
+            tasks.append(Task("developer-1", "پیاده‌سازی", intent.goal, "developer", [tasks[-1].id], capability="coder"))
+            if any(word in text for word in ("تست", "آزمون", "test")):
+                tasks.append(Task("qa-1", "آزمون نهایی", intent.goal, "qa", [tasks[-1].id], capability="coding"))
+            if any(word in text for word in ("github", "گیتهاب", "مخزن", "repository")):
+                tasks.append(Task("github-1", "عملیات GitHub", intent.goal, "github", [tasks[-1].id], capability="general"))
+            return MultiAgentPlan(tasks)
+
         if route.intent == "vision":
             task = Task("developer-1", "تحلیل و پردازش تصویر", intent.goal, "developer", capability="vision")
         elif route.intent == "research":
