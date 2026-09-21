@@ -27,26 +27,57 @@ class MultiAgentPlanner:
         tasks: list[Task] = []
         repository = os.getenv("AI_AGENT_MANAGER_REPOSITORY", "mydsoftware/AI-Agent-Manager")
 
-        engineering_requested = route.intent == "code" and not any(word in text for word in (
-            "تحقیق", "research", "بررسی عمیق"
-        ))
+        mixed_research = (
+            any(word in text for word in ("تحقیق", "research"))
+            and any(word in text for word in ("کدنویسی", "کد", "code", "پیاده", "توسعه"))
+        )
+
+        # Mixed research/development workflows keep the public workflow contract:
+        # research -> developer -> optional QA -> optional GitHub.
+        # Repository preflight belongs to autonomous code-only flows and must not
+        # change the dependency graph of this legacy workflow.
+        if mixed_research:
+            tasks.append(Task("research-1", "تحلیل و تحقیق", intent.goal, "research", capability="general"))
+            tasks.append(Task(
+                "developer-1",
+                "پیاده‌سازی",
+                intent.goal,
+                "developer",
+                [tasks[-1].id],
+                capability="coder",
+            ))
+            if any(word in text for word in ("تست", "آزمون", "test")):
+                tasks.append(Task(
+                    "qa-1",
+                    "آزمون نهایی",
+                    intent.goal,
+                    "qa",
+                    [tasks[-1].id],
+                    capability="coding",
+                ))
+            if any(word in text for word in ("github", "گیتهاب", "مخزن", "repository")):
+                tasks.append(Task(
+                    "github-1",
+                    "عملیات GitHub",
+                    intent.goal,
+                    "github",
+                    [tasks[-1].id],
+                    capability="general",
+                ))
+            return MultiAgentPlan(tasks)
+
+        engineering_requested = route.intent == "code" and not any(
+            word in text for word in ("تحقیق", "research", "بررسی عمیق")
+        )
 
         if engineering_requested:
             tasks.append(Task(
-                "github-preflight-1", "بررسی اولیه Repository",
-                json.dumps({"action":"repository","repository":repository}, ensure_ascii=False),
-                "github", capability="general",
+                "github-preflight-1",
+                "بررسی اولیه Repository",
+                json.dumps({"action": "repository", "repository": repository}, ensure_ascii=False),
+                "github",
+                capability="general",
             ))
-
-        mixed_research = any(word in text for word in ("تحقیق", "research")) and any(word in text for word in ("کدنویسی", "کد", "code", "پیاده", "توسعه"))
-        if mixed_research:
-            tasks.append(Task("research-1", "تحلیل و تحقیق", intent.goal, "research", capability="general"))
-            tasks.append(Task("developer-1", "پیاده‌سازی", intent.goal, "developer", [tasks[-1].id], capability="coder"))
-            if any(word in text for word in ("تست", "آزمون", "test")):
-                tasks.append(Task("qa-1", "آزمون نهایی", intent.goal, "qa", [tasks[-1].id], capability="coding"))
-            if any(word in text for word in ("github", "گیتهاب", "مخزن", "repository")):
-                tasks.append(Task("github-1", "عملیات GitHub", intent.goal, "github", [tasks[-1].id], capability="general"))
-            return MultiAgentPlan(tasks)
 
         if route.intent == "vision":
             task = Task("developer-1", "تحلیل و پردازش تصویر", intent.goal, "developer", capability="vision")
@@ -65,7 +96,9 @@ class MultiAgentPlanner:
             task.depends_on = [tasks[-1].id]
         tasks.append(task)
 
-        android_requested = any(word in text for word in ("android", "اندروید", "apk", "aab", "اپلیکیشن موبایل", "برنامه موبایل"))
+        android_requested = any(word in text for word in (
+            "android", "اندروید", "apk", "aab", "اپلیکیشن موبایل", "برنامه موبایل"
+        ))
         if android_requested:
             dependency = [tasks[-1].id]
             build_command = {
@@ -74,14 +107,30 @@ class MultiAgentPlanner:
                 "workflows": ["android-build-automated.yml", "android-build.yml"],
                 "timeout": int(os.getenv("AI_AGENT_MANAGER_BUILD_TIMEOUT", "900")),
             }
-            tasks.append(Task("android-build-1", "بیلد و بسته‌بندی اندروید", json.dumps(build_command, ensure_ascii=False), "android-build", dependency, capability="android-build"))
+            tasks.append(Task(
+                "android-build-1",
+                "بیلد و بسته‌بندی اندروید",
+                json.dumps(build_command, ensure_ascii=False),
+                "android-build",
+                dependency,
+                capability="android-build",
+            ))
 
-        if any(word in text for word in ("تست", "آزمون", "بررسی نهایی", "test")) and not any(task.agent == "qa" for task in tasks):
+        if any(word in text for word in ("تست", "آزمون", "بررسی نهایی", "test")) and not any(
+            task.agent == "qa" for task in tasks
+        ):
             tasks.append(Task("qa-1", "آزمون نهایی", intent.goal, "qa", [tasks[-1].id], capability="coding"))
 
         github_requested = any(word in text for word in ("github", "گیتهاب", "مخزن", "repository"))
         has_github = any(task.agent == "github" for task in tasks)
         if github_requested and not has_github:
-            tasks.append(Task("github-1", "عملیات GitHub", intent.goal, "github", [tasks[-1].id] if tasks else [], capability="general"))
+            tasks.append(Task(
+                "github-1",
+                "عملیات GitHub",
+                intent.goal,
+                "github",
+                [tasks[-1].id] if tasks else [],
+                capability="general",
+            ))
 
         return MultiAgentPlan(tasks)
