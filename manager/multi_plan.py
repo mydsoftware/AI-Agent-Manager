@@ -27,8 +27,8 @@ class MultiAgentPlanner:
         tasks: list[Task] = []
         repository = os.getenv("AI_AGENT_MANAGER_REPOSITORY", "mydsoftware/AI-Agent-Manager")
 
-        engineering_requested = any(word in text for word in (
-            "بساز", "ساخت", "ایجاد", "پیاده", "توسعه", "تغییر", "اصلاح", "کد", "code", "build", "develop"
+        engineering_requested = route.intent == "code" and not any(word in text for word in (
+            "تحقیق", "research", "بررسی عمیق"
         ))
 
         if engineering_requested:
