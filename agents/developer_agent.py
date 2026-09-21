@@ -1,56 +1,76 @@
 from __future__ import annotations
 
 import json
+import os
 
-from ai_gateway import AIGateway, AIMessage, AIRequest
+from manager.llm_gateway import LLMGateway
+from manager.model_router import ModelRouter
 from manager.task import Task
 from .base_agent import BaseAgent
 
 
 class DeveloperAgent(BaseAgent):
-    """ایجنت تخصصی توسعه نرم‌افزار برای اجرای وظایف کدنویسی."""
+    """ایجنت توسعه؛ درخواست طبیعی را به برنامه اجرایی ساختاریافته تبدیل می‌کند."""
 
     name = "developer"
 
+    SYSTEM_PROMPT = """تو Developer Agent پروژه AI-Agent-Manager هستی.
+درخواست طبیعی کاربر را به برنامه اجرایی قابل‌اجرا تبدیل کن.
+اگر درخواست ساخت یا تغییر نرم‌افزار است، فقط JSON معتبر برگردان و هیچ Markdown اضافه نکن.
+ساختار JSON:
+{"type":"development_plan","engineering_loop":true,"repository":"owner/repo","base":"main","branch":"feature/ai-short-name","workflow":"ci.yml","changes":[{"path":"relative/path","content":"complete file content","message":"commit message"}],"repair_changes":[],"pr":{"title":"...","body":"...","draft":true}}
+هر فایل باید محتوای کامل داشته باشد. از اطلاعات Repository در خروجی preflight برای حفظ ساختار فعلی استفاده کن.
+هیچ Secret یا token داخل خروجی قرار نده.
+اگر درخواست فقط تحلیل است، engineering_loop=false برگردان.
+"""
+
+    def __init__(self, llm: LLMGateway | None = None, model_router: ModelRouter | None = None) -> None:
+        self.llm = llm
+        self.model_router = model_router or ModelRouter()
+
     def run(self, task: Task) -> str:
-        """برنامه مهندسی را می‌سازد و از AI Gateway برای تحلیل کدنویسی استفاده می‌کند."""
         try:
             command = json.loads(task.description)
         except (TypeError, json.JSONDecodeError):
-            command = {"change": task.description}
+            command = None
 
-        if not isinstance(command, dict):
-            return "فرمت وظیفه توسعه معتبر نیست."
+        if isinstance(command, dict) and command.get("repository") and command.get("branch"):
+            changes = command.get("changes")
+            if not changes and command.get("change"):
+                changes = [{
+                    "path": "ENGINEERING_REQUEST.md",
+                    "content": str(command["change"]) + "\n",
+                    "message": "chore: record engineering request",
+                }]
+            if changes:
+                return json.dumps({
+                    "type": "development_plan", "engineering_loop": True,
+                    "repository": command["repository"], "base": command.get("base", "main"),
+                    "branch": command["branch"], "workflow": command.get("workflow", "ci.yml"),
+                    "changes": changes, "repair_changes": command.get("repair_changes", []),
+                    "pr": command.get("pr", {}),
+                }, ensure_ascii=False)
 
-        repository = command.get("repository")
-        change = command.get("change")
-        branch = command.get("branch")
-        if not (repository and change and branch):
-            return json.dumps({
-                "type": "development_plan",
-                "engineering_loop": False,
-                "message": "اطلاعات Repository، branch یا change برای اجرای خودکار کامل نیست.",
-            }, ensure_ascii=False)
+        if self.llm is None:
+            return json.dumps({"type":"development_plan","engineering_loop":False,"message":"LLM برای تولید برنامه اجرایی در دسترس نیست."}, ensure_ascii=False)
 
-        gateway = AIGateway()
-        prompt = json.dumps(command, ensure_ascii=False)
-        response = gateway.complete(AIRequest(messages=[
-            AIMessage(role="system", content="تو ایجنت توسعه نرم‌افزار فارسی هستی. یک برنامه دقیق و قابل اجرای مهندسی برای تغییر خواسته‌شده تولید کن. اجرای مستقیم کد را بر عهده نگیر."),
-            AIMessage(role="user", content=prompt),
-        ]), preferred="omniroute")
-
-        plan = {
-            "type": "development_plan",
-            "repository": repository,
-            "branch": branch,
-            "change": change,
-            "base": command.get("base", "main"),
-            "workflow": command.get("workflow"),
-            "repair_change": command.get("repair_change"),
-            "pr": command.get("pr", {}),
-            "engineering_loop": True,
-            "ai_analysis": response.content,
-            "ai_provider": response.provider,
-            "ai_model": response.model,
-        }
-        return json.dumps(plan, ensure_ascii=False)
+        model = self.model_router.resolve("developer", capability=task.capability)
+        repository = os.getenv("AI_AGENT_MANAGER_REPOSITORY", "mydsoftware/AI-Agent-Manager")
+        branch = os.getenv("AI_AGENT_MANAGER_BUILD_BRANCH", "feature/manager-core")
+        user_prompt = f"مخزن هدف: {repository}\nشاخه کاری پیش‌فرض: {branch}\n\nدرخواست کاربر:\n{task.description}"
+        response = self.llm.complete(
+            [{"role":"system","content":self.SYSTEM_PROMPT},{"role":"user","content":user_prompt}],
+            model, temperature=0.1,
+        )
+        raw = response.content.strip()
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict) and parsed.get("type") == "development_plan":
+                parsed.setdefault("repository", repository)
+                parsed.setdefault("base", "main")
+                parsed.setdefault("branch", branch)
+                return json.dumps(parsed, ensure_ascii=False)
+        except json.JSONDecodeError:
+            if task.capability in {"vision", "coder"}:
+                return raw
+        return json.dumps({"type":"development_plan","engineering_loop":False,"message":"مدل نتوانست برنامه اجرایی JSON تولید کند.","analysis":raw}, ensure_ascii=False)
