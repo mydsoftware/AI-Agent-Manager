@@ -11,6 +11,9 @@ from services.activity_store import ActivityStore
 from services.project_store import ProjectStore
 from services.workflow_store import WorkflowStore
 from runtime import ManagerRuntime
+from api.session_api import create_session_blueprint
+from manager.auth import APIAuthenticator
+from manager.session_runtime import SessionRuntime
 
 
 def _has_cycle(tasks: list[dict]) -> bool:
@@ -64,20 +67,33 @@ def _merge_report_into_workflow(workflow_data: dict, report: dict) -> dict:
     return workflow_data
 
 
-def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
+def create_app(team_api: AgentTeamAPI | None = None, runtime: ManagerRuntime | None = None,
                wordpress_connection_api: WordPressConnectionHttpApi | None = None,
                project_store: ProjectStore | None = None,
                activity_store: ActivityStore | None = None,
-               workflow_store: WorkflowStore | None = None) -> Flask:
+               workflow_store: WorkflowStore | None = None,
+               session_runtime: SessionRuntime | None = None,
+               authenticator: APIAuthenticator | None = None) -> Flask:
     """برنامه HTTP مدیریتی، پروژه، Workflow، Activity و Approval را می‌سازد."""
     app = Flask(__name__)
     manager_runtime = runtime or ManagerRuntime()
+    team_api = team_api or AgentTeamAPI(manager_runtime.agent_team, manager_runtime.registry_manager)
+    if session_runtime is not None:
+        app.register_blueprint(create_session_blueprint(session_runtime, authenticator=authenticator or APIAuthenticator()))
     runtime_for_project = manager_runtime
     connection_api = wordpress_connection_api or WordPressConnectionHttpApi()
     projects = project_store or ProjectStore()
     activity = activity_store or ActivityStore(projects.database_path)
     workflows = workflow_store or WorkflowStore(projects.database_path)
     workflow = WorkflowEngine(manager_runtime)
+
+    @app.post("/api/wordpress/connection/check")
+    def wordpress_connection_check():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "payload باید object باشد."}), 400
+        result = connection_api.post_check(payload)
+        return jsonify(result.body), result.status
 
     @app.get("/api/agents")
     def list_agents(): return jsonify(team_api.list_agents())
@@ -257,3 +273,8 @@ def create_app(team_api: AgentTeamAPI, runtime: ManagerRuntime | None = None,
     def health(): return jsonify({"status": "ok"})
 
     return app
+
+
+
+def create_default_app() -> Flask:
+    return create_app()

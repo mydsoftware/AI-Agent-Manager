@@ -1,91 +1,60 @@
 from __future__ import annotations
 
-from typing import Any
-from manager.decision import DecisionEngine
-from manager.intention import IntentParser
-from manager.user_session import UserSessionManager, UserSession
+from manager.user_session import UserSessionManager, UserSessionResult
+from runtime import ManagerRuntime
 
 
 class SessionRuntime:
-    """مرز اجرای درخواست کاربر، شفاف‌سازی، ادامه Session و تحویل خروجی."""
+    """اجرای واقعی درخواست کاربر با پشتیبانی از clarification و resume."""
 
-    def __init__(self, sessions: UserSessionManager | None = None, runtime: Any | None = None) -> None:
+    GENERIC_REQUESTS = {
+        "یک سایت بساز", "سایت بساز", "یک برنامه بساز", "برنامه بساز",
+        "یه سایت بساز", "یه برنامه بساز", "build a site", "build an app",
+    }
+
+    def __init__(self, sessions: UserSessionManager | None = None, runtime: ManagerRuntime | None = None) -> None:
         self.sessions = sessions or UserSessionManager()
-        if runtime is None:
-            from runtime import ManagerRuntime
-            runtime = ManagerRuntime()
-        self.runtime = runtime
-        self.intent_parser = IntentParser()
-        self.decision_engine = DecisionEngine(getattr(runtime, "governance", None))
+        self.runtime = runtime or ManagerRuntime()
 
-    @staticmethod
-    def _needs_clarification(request: str) -> bool:
-        text = request.strip()
-        if len(text) < 8:
-            return True
-        return text in ("یک سایت بساز", "یه سایت بساز", "برنامه بساز", "اپ بساز", "انجامش بده")
-
-    def start(self, session_id: str, request: str) -> UserSession:
-        session = self.sessions.create(session_id, request)
-        if self._needs_clarification(request):
-            session.status = "waiting_for_user"
-            session.stage = "clarification"
-            session.question = "لطفاً هدف یا نوع دقیق پروژه را مشخص کنید."
-            return self.sessions.update(session)
+    def start(self, session_id: str, request: str) -> UserSessionResult:
+        session = self.sessions.start(session_id, request)
+        if self._is_ambiguous(request):
+            return self.sessions.ask(session_id, "برای انجام دقیق درخواست، موضوع و هدف پروژه را مشخص می‌کنید؟")
         return self._execute(session)
 
-    def resume(self, session_id: str) -> UserSession:
-        session = self.sessions.load(session_id)
-        if session.status == "waiting_for_user":
-            return session
-        if session.status == "completed":
+    def answer(self, session_id: str, answer: str) -> UserSessionResult:
+        session = self.sessions.answer(session_id, answer)
+        return self._execute(session)
+
+    def get(self, session_id: str) -> UserSessionResult:
+        return self.sessions.get(session_id)
+
+    def resume(self, session_id: str) -> UserSessionResult:
+        session = self.sessions.get(session_id)
+        if session.status in {"completed", "waiting_for_user"}:
             return session
         return self._execute(session)
 
-    def answer(self, session_id: str, answer: str) -> UserSession:
-        session = self.sessions.load(session_id)
-        if session.status != "waiting_for_user":
-            raise RuntimeError("این Session منتظر پاسخ کاربر نیست.")
-        answer = answer.strip()
-        if not answer:
-            raise ValueError("پاسخ کاربر نمی‌تواند خالی باشد.")
-        session.answers.append(answer)
-        session.request = f"{session.request}\nاطلاعات تکمیلی کاربر: {answer}"
-        session.question = None
-        return self._execute(session)
-
-    @staticmethod
-    def _serialize_output(output: Any) -> Any:
-        if hasattr(output, "to_dict"):
-            return output.to_dict()
-        if isinstance(output, dict):
-            return output
-        return {"result": output}
-
-    def _execute(self, session: UserSession) -> UserSession:
-        session.status = "running"
-        session.stage = "planning"
-        session = self.sessions.update(session)
-
-        intent = self.intent_parser.parse(session.request)
-        decision = self.decision_engine.decide(intent)
-        session.stage = "execution"
-        session = self.sessions.update(session)
-
+    def _execute(self, session: UserSessionResult) -> UserSessionResult:
+        request = session.request
+        answers = session.context.get("user_answers", [])
+        if answers:
+            request = f"{request}\n\nاطلاعات تکمیلی کاربر:\n" + "\n".join(
+                f"{item['question']} {item['answer']}" for item in answers
+            )
+        agent = "github" if any(word in request.lower() for word in ("github", "گیتهاب", "repository", "مخزن")) else "developer"
         try:
-            output = self.runtime.run(session.request, agent=decision.agent)
+            report = self.runtime.run(request, agent)
         except TypeError:
-            output = self.runtime.run(session.request)
+            report = self.runtime.run(request)
+        data = report if isinstance(report, dict) else report.to_dict()
+        if "report" not in data:
+            data = {"agent": agent, "report": data}
+        else:
+            data.setdefault("agent", agent)
+        return self.sessions.complete(session.session_id, data)
 
-        session.output = {
-            "request": session.request,
-            "agent": decision.agent,
-            "decision": {
-                "reason": decision.reason,
-                "confidence": decision.confidence,
-            },
-            "report": self._serialize_output(output),
-        }
-        session.status = "completed"
-        session.stage = "delivery"
-        return self.sessions.update(session)
+    @classmethod
+    def _is_ambiguous(cls, request: str) -> bool:
+        text = " ".join(request.strip().lower().split())
+        return not text or text in cls.GENERIC_REQUESTS or len(text) < 12

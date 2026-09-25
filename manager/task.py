@@ -28,6 +28,7 @@ class Task:
     started_at: str | None = None
     completed_at: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    capability: str = "general"
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -63,6 +64,7 @@ class Task:
             "title": self.title,
             "description": self.description,
             "agent": self.agent,
+            "capability": self.capability,
             "depends_on": self.depends_on,
             "status": self.status.value,
             "result": self.result,

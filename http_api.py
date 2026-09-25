@@ -8,6 +8,7 @@ from api import execute
 from ai_gateway import AIGateway, GatewayConfig
 from game.factory import GameFactory
 from manager.api_guard import APIGuard
+from manager.auth import APIAuthenticator
 from manager.execution_store import ExecutionStore
 from manager.observability import Observability
 from manager.policy import authorize
@@ -39,9 +40,10 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
 
     def _authorized(self) -> bool:
         # حالت توسعه: اگر کلید محیطی تنظیم نشده باشد، بدون احراز هویت عبور کن
-        if not self.guard.authenticator.enabled:
+        guard = APIGuard(APIAuthenticator())
+        if not guard.authenticator.enabled:
             return True
-        if self.guard.authorized(self.headers.get("X-API-Key")):
+        if guard.authorized(self.headers.get("X-API-Key")):
             return True
         self._send_json(401, {"error": "کلید دسترسی معتبر نیست."})
         return False
@@ -156,7 +158,7 @@ class ManagerRequestHandler(BaseHTTPRequestHandler):
             try:
                 state = self.session_runtime.resume(session_id)
                 self._send_json(200, state.__dict__)
-            except FileNotFoundError:
+            except (FileNotFoundError, KeyError):
                 self._send_json(404, {"error": "Session پیدا نشد."})
             return
         self._send_json(404, {"error": "مسیر درخواست پیدا نشد."})
