@@ -1,0 +1,11 @@
+"use client";
+import {useEffect,useState} from "react";
+type Lead={id:string;name:string;mobile:string;city:string|null;status:string;createdAt:string};
+const labels:Record<string,string>={new:"جدید",contacted:"تماس گرفته شد",follow_up:"در حال پیگیری",converted:"تبدیل به مشتری",completed:"انجام شد",cancelled:"لغو شده"};
+export default function Admin(){const[auth,setAuth]=useState(false),[email,setEmail]=useState(""),[password,setPassword]=useState(""),[leads,setLeads]=useState<Lead[]>([]),[error,setError]=useState("");
+async function load(){const r=await fetch("/api/admin/leads");if(r.ok){setLeads(await r.json());setAuth(true)}}
+useEffect(()=>{load()},[]);
+async function login(e:React.FormEvent){e.preventDefault();const r=await fetch("/api/admin/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});if(r.ok){setError("");load()}else setError("ورود ناموفق بود.")}
+async function update(id:string,status:string){await fetch("/api/admin/leads/"+id,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({status})});load()}
+if(!auth)return <main className="admin"><form className="login" onSubmit={login}><h1>ورود مدیریت</h1><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="ایمیل مدیر"/><input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="رمز عبور"/><button>ورود</button><p>{error}</p></form></main>;
+return <main className="admin"><div className="admin-head"><div><span>مدیریت خدمات ثبت آراد</span><h1>درخواست‌های ثبت شرکت</h1></div><button onClick={async()=>{await fetch("/api/admin/logout",{method:"POST"});location.reload()}}>خروج</button></div><div className="table-wrap"><table><thead><tr><th>نام</th><th>موبایل</th><th>شهر</th><th>خدمت</th><th>وضعیت</th><th>تاریخ</th></tr></thead><tbody>{leads.map(l=><tr key={l.id}><td>{l.name}</td><td dir="ltr">{l.mobile}</td><td>{l.city||"—"}</td><td>ثبت شرکت</td><td><select value={l.status} onChange={e=>update(l.id,e.target.value)}>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></td><td>{new Date(l.createdAt).toLocaleString("fa-IR")}</td></tr>)}</tbody></table></div></main>}
