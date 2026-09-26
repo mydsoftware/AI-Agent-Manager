@@ -157,9 +157,19 @@
         const branch = required(input, "branch");
         const from = String(input.ref || input.base || "").trim();
         if (!from) throw new Error("ref یا base برای branch مبدا الزامی است.");
+
+        let sourceSha = from;
+        if (!/^[0-9a-f]{40}$/i.test(from)) {
+          const refUrl = base + "/git/ref/heads/" +
+            from.split("/").map(encodeURIComponent).join("/");
+          const sourceRef = await github(refUrl, secret);
+          sourceSha = sourceRef.object && sourceRef.object.sha;
+          if (!sourceSha) throw new Error("SHA branch مبدا پیدا نشد.");
+        }
+
         const r = await github(base + "/git/ref", secret, {
           method: "POST", write: true,
-          body: { ref: "refs/heads/" + branch, sha: from }
+          body: { ref: "refs/heads/" + branch, sha: sourceSha }
         });
         return { action: "create_branch", branch, ref: r.ref, sha: r.object && r.object.sha };
       }
