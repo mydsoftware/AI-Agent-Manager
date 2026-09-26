@@ -1,4 +1,4 @@
-name: Deploy AI Edge Gallery Skill to GitHub Pages
+name: Deploy MYD Coding Agent Skill to GitHub Pages
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: myd-coding-agent-pages
   cancel-in-progress: true
 
 jobs:
@@ -22,14 +22,17 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout skill source
+      - name: Checkout Skill source
         uses: actions/checkout@v4
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+
+      - name: Upload only Skill artifact
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: .
-      - name: Deploy to GitHub Pages
+          path: ./skills/myd-coding-agent
+
+      - name: Deploy Skill to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
