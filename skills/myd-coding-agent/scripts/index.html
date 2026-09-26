@@ -1,138 +1,171 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MYD Coding Agent</title>
 </head>
 <body>
 <script>
-const API = "https://api.github.com";
+(function () {
+  const API = "https://api.github.com";
 
-function headers(secret) {
-  const h = {
-    "Accept": "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28"
-  };
-  if (secret) h["Authorization"] = "Bearer " + secret;
-  return h;
-}
-
-async function gh(path, secret) {
-  const response = await fetch(API + path, { headers: headers(secret) });
-  const text = await response.text();
-  let body;
-  try { body = JSON.parse(text); } catch { body = text; }
-  if (!response.ok) {
-    const message = body && body.message ? body.message : ("HTTP " + response.status);
-    throw new Error(message);
+  function authHeaders(secret) {
+    const headers = {
+      "Accept": "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+    if (secret && String(secret).trim()) {
+      headers.Authorization = "Bearer " + String(secret).trim();
+    }
+    return headers;
   }
-  return body;
-}
 
-function decodeContent(encoded) {
-  const clean = encoded.replace(/\s/g, "");
-  const binary = atob(clean);
-  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
-  return new TextDecoder("utf-8").decode(bytes);
-}
+  async function github(path, secret) {
+    const response = await fetch(API + path, {
+      method: "GET",
+      headers: authHeaders(secret)
+    });
+    const bodyText = await response.text();
+    let body;
+    try { body = JSON.parse(bodyText); } catch { body = bodyText; }
+    if (!response.ok) {
+      const message = body && typeof body === "object" && body.message
+        ? body.message : "HTTP " + response.status;
+      throw new Error(message);
+    }
+    return body;
+  }
 
-window["ai_edge_gallery_get_result"] = async (data, secret) => {
-  try {
-    const input = JSON.parse(data || "{}");
-    const owner = input.owner;
-    const repo = input.repo;
+  function safePage(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+  }
+
+  function repoPath(owner, repo) {
+    return "/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo);
+  }
+
+  function decodeBase64Utf8(value) {
+    const binary = atob(String(value).replace(/\s/g, ""));
+    const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  async function run(input, secret) {
+    const owner = String(input.owner || "").trim();
+    const repo = String(input.repo || "").trim();
     if (!owner || !repo) throw new Error("owner و repo الزامی هستند.");
 
-    let result;
+    const base = repoPath(owner, repo);
+    const page = safePage(input.page);
 
     switch (input.action) {
-      case "repo":
-        result = await gh("/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo), secret);
-        break;
+      case "repo": {
+        const r = await github(base, secret);
+        return {
+          name: r.name, full_name: r.full_name,
+          default_branch: r.default_branch, private: r.private,
+          visibility: r.visibility, description: r.description,
+          html_url: r.html_url
+        };
+      }
 
       case "file": {
-        const path = (input.path || "").split("/").map(encodeURIComponent).join("/");
-        let url = "/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/contents/" + path;
-        if (input.ref) url += "?ref=" + encodeURIComponent(input.ref);
-        const item = await gh(url, secret);
+        const path = String(input.path || "").trim();
+        if (!path) throw new Error("path الزامی است.");
+        let url = base + "/contents/" +
+          path.split("/").map(encodeURIComponent).join("/");
+        if (input.ref) url += "?ref=" + encodeURIComponent(String(input.ref));
+        const item = await github(url, secret);
+
         if (Array.isArray(item)) {
-          result = item.map(x => ({
-            name: x.name, path: x.path, type: x.type, size: x.size
-          }));
-        } else if (item.content) {
-          result = {
-            name: item.name,
-            path: item.path,
-            sha: item.sha,
-            size: item.size,
-            content: decodeContent(item.content)
+          return {
+            type: "directory", path,
+            items: item.map(x => ({
+              name: x.name, path: x.path, type: x.type, size: x.size
+            }))
           };
-        } else {
-          result = item;
         }
-        break;
+
+        if (item.content) {
+          return {
+            type: "file", name: item.name, path: item.path,
+            sha: item.sha, size: item.size,
+            content: decodeBase64Utf8(item.content)
+          };
+        }
+        return item;
       }
 
       case "search": {
-        const q = input.query || ("repo:" + owner + "/" + repo);
-        result = await gh("/search/code?q=" + encodeURIComponent(q) +
-          "&per_page=20&page=" + Math.max(1, Number(input.page || 1)), secret);
-        result = {
-          total_count: result.total_count,
-          items: result.items.map(x => ({
-            name: x.name, path: x.path, sha: x.sha,
-            html_url: x.html_url,
-            repository: x.repository ? x.repository.full_name : null
+        const query = String(input.query || "").trim();
+        if (!query) throw new Error("query الزامی است.");
+        const scopedQuery = query.includes("repo:")
+          ? query : query + " repo:" + owner + "/" + repo;
+        const r = await github(
+          "/search/code?q=" + encodeURIComponent(scopedQuery) +
+          "&per_page=20&page=" + page, secret
+        );
+        return {
+          total_count: r.total_count,
+          items: (r.items || []).map(x => ({
+            name: x.name, path: x.path, sha: x.sha, html_url: x.html_url
           }))
         };
-        break;
       }
 
-      case "issues":
-        result = await gh("/repos/" + encodeURIComponent(owner) + "/" +
-          encodeURIComponent(repo) + "/issues?state=open&per_page=20&page=" +
-          Math.max(1, Number(input.page || 1)), secret);
-        result = result.filter(x => !x.pull_request).map(x => ({
+      case "issues": {
+        const r = await github(
+          base + "/issues?state=open&per_page=20&page=" + page, secret
+        );
+        return (r || []).filter(x => !x.pull_request).map(x => ({
           number: x.number, title: x.title, state: x.state,
           user: x.user && x.user.login, html_url: x.html_url
         }));
-        break;
+      }
 
-      case "pulls":
-        result = await gh("/repos/" + encodeURIComponent(owner) + "/" +
-          encodeURIComponent(repo) + "/pulls?state=open&per_page=20&page=" +
-          Math.max(1, Number(input.page || 1)), secret);
-        result = result.map(x => ({
-          number: x.number, title: x.title, state: x.state,
-          draft: x.draft, user: x.user && x.user.login,
-          html_url: x.html_url, head: x.head && x.head.ref,
-          base: x.base && x.base.ref
+      case "pulls": {
+        const r = await github(
+          base + "/pulls?state=open&per_page=20&page=" + page, secret
+        );
+        return (r || []).map(x => ({
+          number: x.number, title: x.title, state: x.state, draft: x.draft,
+          user: x.user && x.user.login, head: x.head && x.head.ref,
+          base: x.base && x.base.ref, html_url: x.html_url
         }));
-        break;
+      }
 
-      case "commits":
-        result = await gh("/repos/" + encodeURIComponent(owner) + "/" +
-          encodeURIComponent(repo) + "/commits?per_page=20&page=" +
-          Math.max(1, Number(input.page || 1)) +
-          (input.ref ? "&sha=" + encodeURIComponent(input.ref) : ""), secret);
-        result = result.map(x => ({
-          sha: x.sha,
-          message: x.commit && x.commit.message,
+      case "commits": {
+        let url = base + "/commits?per_page=20&page=" + page;
+        if (input.ref) url += "&sha=" + encodeURIComponent(String(input.ref));
+        const r = await github(url, secret);
+        return (r || []).map(x => ({
+          sha: x.sha, message: x.commit && x.commit.message,
           author: x.commit && x.commit.author && x.commit.author.name,
           date: x.commit && x.commit.author && x.commit.author.date,
           html_url: x.html_url
         }));
-        break;
+      }
 
       default:
-        throw new Error("action نامعتبر است.");
+        throw new Error("action نامعتبر است: repo, file, search, issues, pulls, commits");
     }
-
-    return JSON.stringify({ result });
-  } catch (e) {
-    return JSON.stringify({ error: "GitHub Skill: " + e.message });
   }
-};
+
+  window["ai_edge_gallery_get_result"] = async function (data, secret) {
+    try {
+      const input = JSON.parse(data || "{}");
+      return JSON.stringify({ result: await run(input, secret) });
+    } catch (error) {
+      return JSON.stringify({
+        error: "MYD Coding Agent: " + (
+          error && error.message ? error.message : String(error)
+        )
+      });
+    }
+  };
+})();
 </script>
 </body>
 </html>
