@@ -26,9 +26,27 @@ jobs:
       - name: اجرای همه آزمون‌ها
         run: pytest -q
 
+  generated-site-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: دریافت کد پروژه
+        uses: actions/checkout@v6
+      - name: آماده‌سازی Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+      - name: نصب وابستگی‌های سایت
+        working-directory: generated-sites/company-registration-app
+        run: npm install --no-audit --no-fund
+      - name: Build سایت Next.js
+        working-directory: generated-sites/company-registration-app
+        run: npm run build
+
   package:
     runs-on: ubuntu-latest
-    needs: test
+    needs:
+      - test
+      - generated-site-build
     steps:
       - name: دریافت کد پروژه
         uses: actions/checkout@v6
