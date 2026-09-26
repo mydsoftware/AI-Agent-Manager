@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+<script>
+const API = "https://api.github.com";
+
+function headers(secret) {
+  const h = {
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+  if (secret) h["Authorization"] = "Bearer " + secret;
+  return h;
+}
+
+async function gh(path, secret) {
+  const response = await fetch(API + path, { headers: headers(secret) });
+  const text = await response.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = text; }
+  if (!response.ok) {
+    const message = body && body.message ? body.message : ("HTTP " + response.status);
+    throw new Error(message);
+  }
+  return body;
+}
+
+function decodeContent(encoded) {
+  const clean = encoded.replace(/\s/g, "");
+  const binary = atob(clean);
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+window["ai_edge_gallery_get_result"] = async (data, secret) => {
+  try {
+    const input = JSON.parse(data || "{}");
+    const owner = input.owner;
+    const repo = input.repo;
+    if (!owner || !repo) throw new Error("owner و repo الزامی هستند.");
+
+    let result;
+
+    switch (input.action) {
+      case "repo":
+        result = await gh("/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo), secret);
+        break;
+
+      case "file": {
+        const path = (input.path || "").split("/").map(encodeURIComponent).join("/");
+        let url = "/repos/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo) + "/contents/" + path;
+        if (input.ref) url += "?ref=" + encodeURIComponent(input.ref);
+        const item = await gh(url, secret);
+        if (Array.isArray(item)) {
+          result = item.map(x => ({
+            name: x.name, path: x.path, type: x.type, size: x.size
+          }));
+        } else if (item.content) {
+          result = {
+            name: item.name,
+            path: item.path,
+            sha: item.sha,
+            size: item.size,
+            content: decodeContent(item.content)
+          };
+        } else {
+          result = item;
+        }
+        break;
+      }
+
+      case "search": {
+        const q = input.query || ("repo:" + owner + "/" + repo);
+        result = await gh("/search/code?q=" + encodeURIComponent(q) +
+          "&per_page=20&page=" + Math.max(1, Number(input.page || 1)), secret);
+        result = {
+          total_count: result.total_count,
+          items: result.items.map(x => ({
+            name: x.name, path: x.path, sha: x.sha,
+            html_url: x.html_url,
+            repository: x.repository ? x.repository.full_name : null
+          }))
+        };
+        break;
+      }
+
+      case "issues":
+        result = await gh("/repos/" + encodeURIComponent(owner) + "/" +
+          encodeURIComponent(repo) + "/issues?state=open&per_page=20&page=" +
+          Math.max(1, Number(input.page || 1)), secret);
+        result = result.filter(x => !x.pull_request).map(x => ({
+          number: x.number, title: x.title, state: x.state,
+          user: x.user && x.user.login, html_url: x.html_url
+        }));
+        break;
+
+      case "pulls":
+        result = await gh("/repos/" + encodeURIComponent(owner) + "/" +
+          encodeURIComponent(repo) + "/pulls?state=open&per_page=20&page=" +
+          Math.max(1, Number(input.page || 1)), secret);
+        result = result.map(x => ({
+          number: x.number, title: x.title, state: x.state,
+          draft: x.draft, user: x.user && x.user.login,
+          html_url: x.html_url, head: x.head && x.head.ref,
+          base: x.base && x.base.ref
+        }));
+        break;
+
+      case "commits":
+        result = await gh("/repos/" + encodeURIComponent(owner) + "/" +
+          encodeURIComponent(repo) + "/commits?per_page=20&page=" +
+          Math.max(1, Number(input.page || 1)) +
+          (input.ref ? "&sha=" + encodeURIComponent(input.ref) : ""), secret);
+        result = result.map(x => ({
+          sha: x.sha,
+          message: x.commit && x.commit.message,
+          author: x.commit && x.commit.author && x.commit.author.name,
+          date: x.commit && x.commit.author && x.commit.author.date,
+          html_url: x.html_url
+        }));
+        break;
+
+      default:
+        throw new Error("action نامعتبر است.");
+    }
+
+    return JSON.stringify({ result });
+  } catch (e) {
+    return JSON.stringify({ error: "GitHub Skill: " + e.message });
+  }
+};
+</script>
+</body>
+</html>
