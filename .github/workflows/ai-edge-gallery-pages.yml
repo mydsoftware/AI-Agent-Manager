@@ -22,17 +22,28 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout Skill source
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: feature/manager-core
 
-      - name: Configure GitHub Pages
+      - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload only Skill artifact
-        uses: actions/upload-pages-artifact@v4
-        with:
-          path: ./skills/myd-coding-agent
+      - name: Prepare Skill artifact
+        run: |
+          test -f skills/myd-coding-agent/SKILL.md
+          mkdir -p _site
+          cp -R skills/myd-coding-agent/. _site/
+          touch _site/.nojekyll
+          test -f _site/SKILL.md
+          ls -la _site
 
-      - name: Deploy Skill to GitHub Pages
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy Pages
         id: deployment
         uses: actions/deploy-pages@v4
