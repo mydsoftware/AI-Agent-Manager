@@ -10,7 +10,7 @@
 (function () {
   const API = "https://api.github.com";
 
-  function authHeaders(secret) {
+  function authHeaders(secret, write) {
     const headers = {
       "Accept": "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28"
@@ -18,13 +18,18 @@
     if (secret && String(secret).trim()) {
       headers.Authorization = "Bearer " + String(secret).trim();
     }
+    if (write && (!secret || !String(secret).trim())) {
+      throw new Error("برای عملیات Write یک GitHub Personal Access Token لازم است.");
+    }
     return headers;
   }
 
-  async function github(path, secret) {
+  async function github(path, secret, options) {
+    const opts = options || {};
     const response = await fetch(API + path, {
-      method: "GET",
-      headers: authHeaders(secret)
+      method: opts.method || "GET",
+      headers: authHeaders(secret, !!opts.write),
+      body: opts.body ? JSON.stringify(opts.body) : undefined
     });
     const bodyText = await response.text();
     let body;
@@ -52,11 +57,15 @@
     return new TextDecoder("utf-8").decode(bytes);
   }
 
-  async function run(input, secret) {
-    const owner = String(input.owner || "").trim();
-    const repo = String(input.repo || "").trim();
-    if (!owner || !repo) throw new Error("owner و repo الزامی هستند.");
+  function required(input, key) {
+    const value = String(input[key] || "").trim();
+    if (!value) throw new Error(key + " الزامی است.");
+    return value;
+  }
 
+  async function run(input, secret) {
+    const owner = required(input, "owner");
+    const repo = required(input, "repo");
     const base = repoPath(owner, repo);
     const page = safePage(input.page);
 
@@ -67,18 +76,16 @@
           name: r.name, full_name: r.full_name,
           default_branch: r.default_branch, private: r.private,
           visibility: r.visibility, description: r.description,
-          html_url: r.html_url
+          html_url: r.html_url, permissions: r.permissions
         };
       }
 
       case "file": {
-        const path = String(input.path || "").trim();
-        if (!path) throw new Error("path الزامی است.");
+        const path = required(input, "path");
         let url = base + "/contents/" +
           path.split("/").map(encodeURIComponent).join("/");
         if (input.ref) url += "?ref=" + encodeURIComponent(String(input.ref));
         const item = await github(url, secret);
-
         if (Array.isArray(item)) {
           return {
             type: "directory", path,
@@ -87,7 +94,6 @@
             }))
           };
         }
-
         if (item.content) {
           return {
             type: "file", name: item.name, path: item.path,
@@ -99,8 +105,7 @@
       }
 
       case "search": {
-        const query = String(input.query || "").trim();
-        if (!query) throw new Error("query الزامی است.");
+        const query = required(input, "query");
         const scopedQuery = query.includes("repo:")
           ? query : query + " repo:" + owner + "/" + repo;
         const r = await github(
@@ -148,8 +153,98 @@
         }));
       }
 
+      case "create_branch": {
+        const branch = required(input, "branch");
+        const from = String(input.ref || input.base || "").trim();
+        if (!from) throw new Error("ref یا base برای branch مبدا الزامی است.");
+        const r = await github(base + "/git/ref", secret, {
+          method: "POST", write: true,
+          body: { ref: "refs/heads/" + branch, sha: from }
+        });
+        return { action: "create_branch", branch, ref: r.ref, sha: r.object && r.object.sha };
+      }
+
+      case "create_file": {
+        const path = required(input, "path");
+        const content = String(input.content == null ? "" : input.content);
+        const message = required(input, "message");
+        const body = { message, content: btoa(unescape(encodeURIComponent(content))) };
+        if (input.branch) body.branch = String(input.branch);
+        const r = await github(base + "/contents/" +
+          path.split("/").map(encodeURIComponent).join("/"), secret, {
+            method: "PUT", write: true, body
+        });
+        return {
+          action: "create_file", path,
+          branch: input.branch || null,
+          commit_sha: r.commit && r.commit.sha,
+          content_sha: r.content && r.content.sha,
+          html_url: r.content && r.content.html_url
+        };
+      }
+
+      case "update_file": {
+        const path = required(input, "path");
+        const sha = required(input, "sha");
+        const content = String(input.content == null ? "" : input.content);
+        const message = required(input, "message");
+        const body = {
+          message,
+          content: btoa(unescape(encodeURIComponent(content))),
+          sha
+        };
+        if (input.branch) body.branch = String(input.branch);
+        const r = await github(base + "/contents/" +
+          path.split("/").map(encodeURIComponent).join("/"), secret, {
+            method: "PUT", write: true, body
+        });
+        return {
+          action: "update_file", path,
+          branch: input.branch || null,
+          commit_sha: r.commit && r.commit.sha,
+          content_sha: r.content && r.content.sha,
+          html_url: r.content && r.content.html_url
+        };
+      }
+
+      case "delete_file": {
+        const path = required(input, "path");
+        const sha = required(input, "sha");
+        const message = required(input, "message");
+        const body = { message, sha };
+        if (input.branch) body.branch = String(input.branch);
+        const r = await github(base + "/contents/" +
+          path.split("/").map(encodeURIComponent).join("/"), secret, {
+            method: "DELETE", write: true, body
+        });
+        return {
+          action: "delete_file", path,
+          branch: input.branch || null,
+          commit_sha: r.commit && r.commit.sha
+        };
+      }
+
+      case "create_pr": {
+        const head = required(input, "head");
+        const baseBranch = required(input, "base");
+        const title = required(input, "title");
+        const body = String(input.body || "");
+        const r = await github(base + "/pulls", secret, {
+          method: "POST", write: true,
+          body: { title, head, base: baseBranch, body }
+        });
+        return {
+          action: "create_pr", number: r.number, title: r.title,
+          state: r.state, head: r.head && r.head.ref,
+          base: r.base && r.base.ref, html_url: r.html_url
+        };
+      }
+
       default:
-        throw new Error("action نامعتبر است: repo, file, search, issues, pulls, commits");
+        throw new Error(
+          "action نامعتبر است: repo, file, search, issues, pulls, commits, " +
+          "create_branch, create_file, update_file, delete_file, create_pr"
+        );
     }
   }
 
@@ -159,9 +254,8 @@
       return JSON.stringify({ result: await run(input, secret) });
     } catch (error) {
       return JSON.stringify({
-        error: "MYD Coding Agent: " + (
-          error && error.message ? error.message : String(error)
-        )
+        error: "MYD Coding Agent: " +
+          (error && error.message ? error.message : String(error))
       });
     }
   };
