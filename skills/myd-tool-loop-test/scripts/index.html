@@ -1,18 +1,21 @@
 <!doctype html>
-<html><body>
+<html lang="en">
+<head><meta charset="UTF-8"></head>
+<body>
 <script>
-window["ai_gallery_get_result"] = async function(data, secret) {
+window["ai_edge_gallery_get_result"] = async function(data, secret) {
   try {
     const input = JSON.parse(data || "{}");
-    if (!input.expression) throw new Error("expression الزامی است.");
+    if (!input.expression) throw new Error("expression is required.");
     if (!/^[0-9+*\-/%().\s]+$/.test(input.expression)) {
-      throw new Error("فقط عبارت ریاضی ساده مجاز است.");
+      throw new Error("Only simple math expressions are allowed.");
     }
     const result = Function("return (" + input.expression + ")")();
-    return JSON.stringify({result});
+    return JSON.stringify({ result });
   } catch (error) {
-    return JSON.stringify({error: error.message || String(error)});
+    return JSON.stringify({ error: error.message || String(error) });
   }
 };
 </script>
-</body></html>
+</body>
+</html>
