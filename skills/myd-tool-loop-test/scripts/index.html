@@ -1,11 +1,11 @@
 <!doctype html>
 <html><body>
 <script>
-window["ai_edge_gallery_get_result"] = async function(data, secret) {
+window["ai_gallery_get_result"] = async function(data, secret) {
   try {
     const input = JSON.parse(data || "{}");
     if (!input.expression) throw new Error("expression الزامی است.");
-    if (!/^[0-9+*\\-/%().\\s]+$/.test(input.expression)) {
+    if (!/^[0-9+*\-/%().\s]+$/.test(input.expression)) {
       throw new Error("فقط عبارت ریاضی ساده مجاز است.");
     }
     const result = Function("return (" + input.expression + ")")();
