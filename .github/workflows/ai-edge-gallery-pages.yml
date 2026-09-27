@@ -30,10 +30,14 @@ jobs:
       - name: Prepare Skill artifact
         run: |
           test -f skills/myd-coding-agent/SKILL.md
+          test -f skills/myd-tool-loop-test/SKILL.md
           mkdir -p _site
           cp -R skills/myd-coding-agent/. _site/
+          mkdir -p _site/skills/myd-tool-loop-test
+          cp -R skills/myd-tool-loop-test/. _site/skills/myd-tool-loop-test/
           touch _site/.nojekyll
           test -f _site/SKILL.md
+          test -f _site/skills/myd-tool-loop-test/SKILL.md
           ls -la _site
 
       - name: Upload Pages artifact
