@@ -14,6 +14,7 @@ class IntentRouter:
     """طبقه‌بندی سبک درخواست برای انتخاب Agent و مدل محلی."""
 
     RULES = {
+        "business_growth": ("business_growth", "business", "business-strategy"),
         "vision": ("vision", "vision", "developer"),
         "code": ("coding", "coder", "developer"),
         "test": ("testing", "coding", "qa"),
@@ -23,6 +24,11 @@ class IntentRouter:
     }
 
     KEYWORDS = {
+        "business_growth": (
+            "کارثبت", "karsabt", "کسب و کار", "کسب‌وکار", "رشد کسب",
+            "بازاریابی", "بازاریابی کامل", "جذب مشتری", "لید",
+            "seo", "سئو", "فروش", "از صفر تا صد", "از صفر تا ۱۰۰",
+        ),
         "vision": ("تصویر", "اسکرین‌شات", "screenshot", "image", "ocr", "عکس"),
         "code": ("کد", "code", "برنامه", "پیاده سازی", "پیاده‌سازی", "bug", "خطا"),
         "test": ("تست", "test", "pytest", "e2e", "smoke"),

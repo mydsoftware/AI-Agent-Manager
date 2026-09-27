@@ -4,6 +4,7 @@ import json
 import os
 from dataclasses import dataclass
 
+from manager.business_growth import BusinessGrowthPipeline
 from manager.intent_router import IntentRouter
 from manager.intention import UserIntent
 from manager.task import Task
@@ -16,7 +17,7 @@ class MultiAgentPlan:
 
 
 class MultiAgentPlanner:
-    """درخواست طبیعی را به مراحل preflight، توسعه، مهندسی، build و QA تبدیل می‌کند."""
+    """درخواست طبیعی را به مراحل تخصصی، مهندسی و رشد کسب‌وکار تبدیل می‌کند."""
 
     def __init__(self, intent_router: IntentRouter | None = None) -> None:
         self.intent_router = intent_router or IntentRouter()
@@ -24,8 +25,13 @@ class MultiAgentPlanner:
     def plan(self, intent: UserIntent) -> MultiAgentPlan:
         text = intent.goal.lower()
         route = self.intent_router.classify(intent.goal)
-        tasks: list[Task] = []
         repository = os.getenv("AI_AGENT_MANAGER_REPOSITORY", "mydsoftware/AI-Agent-Manager")
+
+        if route.intent == "business_growth":
+            target = "کارثبت / karsabt.ir" if ("کارثبت" in text or "karsabt" in text) else None
+            return MultiAgentPlan(BusinessGrowthPipeline().build(intent.goal, target=target))
+
+        tasks: list[Task] = []
 
         engineering_requested = any(word in text for word in (
             "بساز", "ساخت", "ایجاد", "پیاده", "توسعه", "تغییر", "اصلاح", "کد", "code", "build", "develop"

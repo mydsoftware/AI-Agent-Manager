@@ -4,6 +4,17 @@ from typing import Dict, Type
 
 from .base_agent import BaseAgent
 from .android_build_agent import AndroidBuildAgent
+from .business_growth_agents import (
+    AnalyticsAgent,
+    BusinessStrategyAgent,
+    ContentAgent,
+    GrowthOptimizerAgent,
+    LeadGenerationAgent,
+    MarketingAgent,
+    SalesAgent,
+    SEOAgent,
+    WebsiteBuilderAgent,
+)
 from .developer_agent import DeveloperAgent
 from .github_agent import GitHubAgent
 from .github_project_agent import GitHubProjectAgent
@@ -44,4 +55,18 @@ def create_default_registry() -> SpecialistRegistry:
     registry.register(GitHubAgent)
     registry.register(GitHubProjectAgent)
     registry.register(AndroidBuildAgent)
+
+    for agent_class in (
+        BusinessStrategyAgent,
+        WebsiteBuilderAgent,
+        SEOAgent,
+        ContentAgent,
+        LeadGenerationAgent,
+        MarketingAgent,
+        SalesAgent,
+        AnalyticsAgent,
+        GrowthOptimizerAgent,
+    ):
+        registry.register(agent_class)
+
     return registry
