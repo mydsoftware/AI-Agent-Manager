@@ -1,38 +1,45 @@
 # موتور رشد کسب‌وکار
 
-AI-Agent-Manager علاوه بر اجرای وظایف مهندسی، یک Pipeline رشد کسب‌وکار دارد.
-
-## چرخه
+AI-Agent-Manager چرخه زیر را اجرا می‌کند:
 
 ```text
-استراتژی
-  ↓
-وب‌سایت
-  ↓
-SEO
-  ↓
-محتوا
-  ↓
-تولید/شکار لید
-  ↓
-بازاریابی
-  ↓
-فروش
-  ↓
-تحلیل
-  ↓
-بهینه‌سازی
-  ↺
+Strategy → Website → SEO → Content → Lead Generation
+→ Marketing → Sales → Analytics → Optimization ↺
 ```
 
-## Target اولیه: کارثبت
+## اجرای واقعی
 
-- برند: کارثبت
-- دامنه: karsabt.ir
-- خدمات: ثبت شرکت، پروانه/جواز کسب، مجوز مشاغل خانگی، کافی‌نت آنلاین و خدمات اداری/سامانه‌ای
-- بازار اولیه: دزفول
-- ورودی اصلی جذب مشتری: خدمات پروانه کسب و مجوزهای کسب‌وکار
-- کانال اولیه Lead Generation: دیوار
-- خروجی مطلوب: ساخت سایت، ایجاد زیرساخت SEO، تولید محتوا، شکار لید، پیگیری فروش، اندازه‌گیری و اجرای چرخه بهینه‌سازی
+هر مرحله می‌تواند یک `GrowthAction` تولید کند. `GrowthActionRegistry` اقدام را
+به Adapter متناظر تحویل می‌دهد. Adapter پیش‌فرض Dry Run است؛ بنابراین تا زمانی
+که اتصال و credential واقعی تعریف نشده، Agent ادعای اجرای اقدام خارجی نمی‌کند.
 
-این سند فقط قرارداد کاری Pipeline است؛ اطلاعات محرمانه یا credential نباید در Repository ذخیره شود.
+Adapterهای قابل اتصال:
+
+- Website/GitHub Engineering Loop
+- Search Console
+- Analytics
+- CRM
+- Lead Sources
+- Marketing Channels
+- Messaging
+- Finance/Revenue
+
+## KPI
+
+- traffic
+- organic_clicks
+- leads
+- qualified_leads
+- conversion_rate
+- customers
+- revenue
+
+## Target اولیه
+
+`کارثبت / karsabt.ir`
+
+بازار اولیه: دزفول
+
+کانال اولیه Lead Generation: دیوار
+
+هیچ credential، token یا اطلاعات خصوصی نباید در Repository ذخیره شود.
