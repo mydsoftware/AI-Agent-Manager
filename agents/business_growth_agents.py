@@ -10,7 +10,7 @@ from .base_agent import BaseAgent
 
 
 class BusinessGrowthAgent(BaseAgent):
-    """ایجنت پایه رشد با خروجی ساختاریافته و قابل انتقال به مرحله بعد."""
+    """ایجنت پایه رشد کسب‌وکار با خروجی JSON قابل مصرف توسط مرحله بعد."""
 
     phase = "business"
     next_action = "continue"
@@ -19,92 +19,75 @@ class BusinessGrowthAgent(BaseAgent):
         self.llm = llm or LLMGateway()
         self.model_router = model_router or ModelRouter()
 
-    def _complete(self, task: Task, instruction: str) -> dict:
+    def _complete(self, task: Task, role: str = "planner") -> str:
+        prompt = f"""تو {self.name} در AI-Agent-Manager هستی.
+هدف: اجرای مرحله {self.phase} از چرخه رشد کسب‌وکار.
+خروجی فقط JSON معتبر باشد و برای Agent مرحله بعد قابل مصرف باشد.
+از ادعای انجام اقدام خارجی که ابزارش در اختیار تو نیست خودداری کن.
+درخواست و context:
+{task.description}
+"""
+        model = self.model_router.resolve(role, capability=role)
         response = self.llm.complete(
             [
-                {
-                    "role": "system",
-                    "content": (
-                        f"تو Agent تخصصی {self.name} هستی. مرحله: {self.phase}. "
-                        "فقط JSON معتبر تولید کن. اقدامی را که ابزارش را نداری انجام‌شده اعلام نکن."
-                    ),
-                },
-                {"role": "user", "content": instruction},
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": task.description},
             ],
-            self.model_router.resolve("planner", capability="planner"),
+            model,
             temperature=0.15,
         )
-        try:
-            data = json.loads(response.content.strip())
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"خروجی {self.name} JSON معتبر نیست.") from exc
-        if not isinstance(data, dict):
-            raise ValueError(f"خروجی {self.name} باید object باشد.")
-        return data
+        return response.content.strip()
 
     def run(self, task: Task) -> str:
-        data = self._complete(task, task.description)
-        data.setdefault("type", "business_growth_result")
-        data.setdefault("phase", self.phase)
-        data.setdefault("next_action", self.next_action)
-        return json.dumps(data, ensure_ascii=False)
+        try:
+            raw = self._complete(task)
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                parsed.setdefault("type", "business_growth_result")
+                parsed.setdefault("phase", self.phase)
+                parsed.setdefault("next_action", self.next_action)
+                return json.dumps(parsed, ensure_ascii=False)
+        except Exception as exc:
+            return json.dumps(
+                {
+                    "type": "business_growth_result",
+                    "phase": self.phase,
+                    "status": "failed",
+                    "next_action": self.next_action,
+                    "error": str(exc),
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {
+                "type": "business_growth_result",
+                "phase": self.phase,
+                "status": "invalid_model_output",
+                "next_action": self.next_action,
+            },
+            ensure_ascii=False,
+        )
 
 
 class BusinessStrategyAgent(BusinessGrowthAgent):
     name = "business-strategy"
     phase = "strategy"
-    next_action = "website-builder"
+    next_action = "website_builder"
 
 
 class WebsiteBuilderAgent(BusinessGrowthAgent):
     name = "website-builder"
     phase = "website"
-    next_action = "seo"
+    next_action = "seo_foundation"
 
     def run(self, task: Task) -> str:
-        repository = os.getenv("BUSINESS_GROWTH_REPOSITORY", "mydsoftware/karsabt")
-        branch = os.getenv("BUSINESS_GROWTH_BRANCH", "feature/website-foundation")
-        instruction = f"""
-برای کسب‌وکار هدف، یک برنامه واقعی ساخت سایت تولید کن.
-Target repository: {repository}
-Target branch: {branch}
-
-در خروجی علاوه بر اطلاعات استراتژی، این ساختار را تولید کن:
-{{
-  "type":"business_growth_result",
-  "phase":"website",
-  "engineering_plan": {{
-    "repository":"{repository}",
-    "base":"main",
-    "branch":"{branch}",
-    "workflow":"ci.yml",
-    "changes":[
-      {{"path":"relative/path","content":"FULL FILE CONTENT","message":"commit message"}}
-    ],
-    "repair_changes":[],
-    "pr":{{"title":"...","body":"...","draft":true}}
-  }}
-}}
-
-برای کارثبت:
-- فارسی و RTL
-- mobile-first
-- صفحات خدمات ثبت شرکت، پروانه کسب، مشاغل خانگی، خدمات اداری و کافی‌نت آنلاین
-- صفحه اصلی و صفحات خدمت قابل ایندکس
-- فرم Lead
-- SEO foundation
-- sitemap/robots/schema در صورت مناسب بودن
-- بدون Secret
-- فایل‌ها باید کامل و قابل commit باشند
-
-Context:
-{task.description}
+        prompt = task.description + """
+اگر ساخت سایت لازم است، خروجی JSON شامل development_plan هم تولید کن:
+{"type":"business_growth_result","phase":"website","development_plan":{"engineering_loop":true,"repository":"owner/repo","branch":"...","changes":[]}}
+فایل‌ها باید محتوای کامل داشته باشند و Secret نداشته باشند.
 """
-        data = self._complete(task, instruction)
-        data.setdefault("type", "business_growth_result")
-        data["phase"] = "website"
-        data["next_action"] = "seo"
-        return json.dumps(data, ensure_ascii=False)
+        task.description = prompt
+        return super().run(task)
 
 
 class SEOAgent(BusinessGrowthAgent):
@@ -116,7 +99,7 @@ class SEOAgent(BusinessGrowthAgent):
 class ContentAgent(BusinessGrowthAgent):
     name = "content"
     phase = "content"
-    next_action = "lead-generation"
+    next_action = "lead_generation"
 
 
 class LeadGenerationAgent(BusinessGrowthAgent):
@@ -140,7 +123,7 @@ class SalesAgent(BusinessGrowthAgent):
 class AnalyticsAgent(BusinessGrowthAgent):
     name = "analytics"
     phase = "analytics"
-    next_action = "growth-optimizer"
+    next_action = "growth_optimizer"
 
 
 class GrowthOptimizerAgent(BusinessGrowthAgent):

@@ -1,4 +1,5 @@
 from manager.business_growth_runtime import BusinessGrowthRuntime
+from manager.business_growth import BusinessGrowthPipeline
 
 
 class FakeExecutor:
@@ -6,20 +7,20 @@ class FakeExecutor:
         self.calls = []
 
     def run(self, tasks):
-        task = tasks[0]
-        self.calls.append(task)
-        if task.agent == "website-builder":
-            return ['{"type":"business_growth_result","phase":"website","engineering_plan":{"repository":"mydsoftware/karsabt","branch":"feature/website-foundation","changes":[{"path":"README.md","content":"# کارثبت","message":"feat: website foundation"}]}}']
-        if task.agent == "github-project":
-            return ['{"state":"completed","ci_status":"success"}']
-        return [f'{{"type":"business_growth_result","phase":"{task.agent}"}}']
+        self.calls.append(tasks[0])
+        return [f'{{"type":"business_growth_result","phase":"{tasks[0].agent}"}}']
 
 
-def test_website_plan_is_forwarded_to_engineering_loop():
+def test_growth_runtime_executes_all_stages_in_order():
     executor = FakeExecutor()
-    history = BusinessGrowthRuntime(executor).run("کارثبت را از صفر بساز")
+    history = BusinessGrowthRuntime(executor).run(
+        "از صفر تا صد رشد کارثبت",
+        target="کارثبت / karsabt.ir",
+    )
 
-    github_calls = [task for task in executor.calls if task.agent == "github-project"]
-    assert github_calls
-    assert history[1]["agent"] == "website-builder"
-    assert "engineering_execution" in history[1]["result"]
+    assert len(history) == len(BusinessGrowthPipeline.STAGES)
+    assert [item["agent"] for item in history] == [
+        stage.agent for stage in BusinessGrowthPipeline.STAGES
+    ]
+    assert len(executor.calls) == len(BusinessGrowthPipeline.STAGES)
+    assert "خروجی مرحله قبلی" in executor.calls[1].description
