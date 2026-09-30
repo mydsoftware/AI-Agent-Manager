@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from agents.custom_agent import build_custom_agent
 from agents.registry import create_default_registry
 from agents.registry_manager import AgentRegistryManager
@@ -14,7 +16,49 @@ from manager.persistent_memory import PersistentMemory
 from manager.report import ManagerReport
 from manager.router import Router
 from manager.task import Task
+from services.agent_deployment_adapter import AgentDeploymentAdapter
 from services.agent_store import AgentStore
+from services.browser_qa import BrowserQA
+from services.ci_monitor import CIMonitor
+from services.deployment_orchestrator import DeploymentOrchestrator
+from services.github_integration import GitHubIntegration
+from services.vercel_deployment import VercelDeploymentService
+
+
+class _ManagedBrowser:
+    """Browser و Playwright runtime را به‌صورت یک Lifecycle واحد مدیریت می‌کند."""
+
+    def __init__(self, playwright, browser) -> None:
+        self._playwright = playwright
+        self._browser = browser
+
+    def new_page(self, *args, **kwargs):
+        """یک Page جدید از Browser مدیریت‌شده می‌سازد."""
+        return self._browser.new_page(*args, **kwargs)
+
+    def new_context(self, *args, **kwargs):
+        """یک BrowserContext جدید را از Browser مدیریت‌شده می‌سازد."""
+        return self._browser.new_context(*args, **kwargs)
+
+    def close(self) -> None:
+        """Browser و سپس runtime مربوط به Playwright را می‌بندد."""
+        try:
+            self._browser.close()
+        finally:
+            self._playwright.stop()
+
+
+def _create_browser_for_qa() -> _ManagedBrowser:
+    """یک Browser Chromium مستقل و کوتاه‌عمر برای هر اجرای QA می‌سازد."""
+    from playwright.sync_api import sync_playwright
+
+    playwright = sync_playwright().start()
+    try:
+        browser = playwright.chromium.launch(headless=True)
+        return _ManagedBrowser(playwright, browser)
+    except Exception:
+        playwright.stop()
+        raise
 
 
 class ManagerRuntime:
@@ -34,6 +78,24 @@ class ManagerRuntime:
         self.persistent_memory = PersistentMemory(database_path)
         self.loop = AgenticLoop(self.router, self.memory)
         self.executor = TaskExecutor(self.loop)
+
+        # سرویس‌ها در Runtime ساخته می‌شوند اما تا زمان درخواست، هیچ عملیات شبکه‌ای اجرا نمی‌کنند.
+        self.github = GitHubIntegration()
+        self.ci_monitor = CIMonitor(self.github)
+        self.vercel = VercelDeploymentService()
+        egress_proxy = os.getenv("BROWSER_QA_EGRESS_PROXY", "").strip() or None
+        self.browser_qa = BrowserQA(
+            browser_factory=_create_browser_for_qa,
+            egress_proxy=egress_proxy,
+            require_egress_proxy=True,
+        )
+        self.deployment_adapter = AgentDeploymentAdapter.from_task_executor(self.executor)
+        self.deployment_orchestrator = DeploymentOrchestrator(
+            executor=self.executor,
+            vercel=self.vercel,
+            browser_qa=self.browser_qa,
+            ci_monitor=self.ci_monitor,
+        )
         self.orchestrator = ManagerOrchestrator(memory=self.memory)
 
     def _load_custom_agents(self) -> None:

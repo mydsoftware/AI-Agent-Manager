@@ -2,24 +2,27 @@ name: Deploy Global ChatGPT MCP
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "global-mcp/**"
-      - ".github/workflows/deploy-global-mcp.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: global-mcp-production
+  cancel-in-progress: false
+
 env:
   GLOBAL_MCP_URL: https://ai-agent-manager-global-mcp.yusefimohammad.workers.dev
+
+defaults:
+  run:
+    working-directory: global-mcp
 
 jobs:
   deploy:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: global-mcp
+    environment:
+      name: production
     steps:
       - name: دریافت پروژه
         uses: actions/checkout@v4
@@ -28,9 +31,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: global-mcp/package-lock.json
 
       - name: نصب وابستگی‌ها
-        run: npm install
+        run: npm ci
 
       - name: بررسی TypeScript
         run: npx tsc --noEmit --allowJs false --target ES2022 --module NodeNext --moduleResolution NodeNext src/index.ts
@@ -48,25 +53,24 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID تنظیم نشده است." >&2; exit 1; }
 
       - name: تنظیم Secretهای Worker
-        run: |
-          printf '%s' "$MCP_ACCESS_TOKEN" | npx wrangler secret put MCP_ACCESS_TOKEN
-          printf '%s' "$GITHUB_TOKEN" | npx wrangler secret put GITHUB_TOKEN
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           MCP_ACCESS_TOKEN: ${{ secrets.MCP_ACCESS_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          printf '%s' "$MCP_ACCESS_TOKEN" | npx wrangler secret put MCP_ACCESS_TOKEN
+          printf '%s' "$GITHUB_TOKEN" | npx wrangler secret put GITHUB_TOKEN
 
       - name: Deploy
-        run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
 
-      - name: تست Health و اعلام URL
+      - name: تست Health
         run: |
           echo "Global MCP URL: $GLOBAL_MCP_URL"
-          echo "Health endpoint: $GLOBAL_MCP_URL/health"
           for i in 1 2 3 4 5; do
             response=$(curl -fsS --max-time 15 "$GLOBAL_MCP_URL/health" 2>/dev/null) && {
               echo "Health check: OK"

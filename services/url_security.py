@@ -1,0 +1,151 @@
+"""اعتبارسنجی و درخواست امن URLهای خروجی برای جلوگیری از SSRF."""
+
+from __future__ import annotations
+
+import ipaddress
+import socket
+from dataclasses import dataclass
+from urllib.parse import urljoin, urlparse
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3 import PoolManager
+
+
+@dataclass(frozen=True)
+class PublicHTTPResponse:
+    """متادیتای محدود پاسخ connectivity probe بدون نگه‌داشتن اتصال شبکه."""
+
+    status_code: int
+    headers: dict[str, str]
+
+    def close(self) -> None:
+        """برای سازگاری با مصرف‌کننده‌ها؛ اتصال پیش از بازگشت بسته شده است."""
+        return None
+
+
+def _resolve_public_addresses(host: str, port: int) -> list[ipaddress._BaseAddress]:
+    """Host را Resolve می‌کند و فقط IPهای عمومی را برای اتصال مجاز نگه می‌دارد."""
+    try:
+        addresses = {ipaddress.ip_address(host)}
+    except ValueError:
+        try:
+            addresses = {
+                ipaddress.ip_address(info[4][0])
+                for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            }
+        except (OSError, ValueError):
+            raise ValueError("Host قابل Resolve نیست.") from None
+
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("دسترسی به IP خصوصی، loopback یا شبکه داخلی مجاز نیست.")
+    return sorted(addresses, key=str)
+
+
+def validate_public_http_url(url: str) -> str:
+    """URL را بررسی می‌کند و مقصدهای localhost، شبکه داخلی و IP خصوصی را رد می‌کند."""
+    value = url.strip()
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("URL فقط باید با http:// یا https:// شروع شود.")
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("URL باید یک Host معتبر عمومی و بدون Credential داشته باشد.")
+
+    host = parsed.hostname.rstrip(".").lower()
+    if host in {"localhost", "localhost.localdomain", "0.0.0.0", "::1"} or host.endswith(".localhost"):
+        raise ValueError("دسترسی به localhost و مقصدهای محلی مجاز نیست.")
+
+    _resolve_public_addresses(host, parsed.port or (443 if parsed.scheme == "https" else 80))
+    return value
+
+
+class _PinnedHostAdapter(HTTPAdapter):
+    """Adapterی که اتصال را به IP Resolve‌شده Pin می‌کند و SNI/گواهی را روی Host اصلی نگه می‌دارد."""
+
+    def __init__(self, host: str, ip: str, **kwargs) -> None:
+        """Adapter را با Host اصلی و IP عمومی Resolve‌شده آماده می‌کند."""
+        self.host = host
+        self.ip = ip
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs) -> None:
+        """Pool را به IP ثابت متصل می‌کند بدون غیرفعال‌کردن بررسی TLS hostname."""
+        pool_kwargs["assert_hostname"] = self.host
+        pool_kwargs["server_hostname"] = self.host
+        self.poolmanager = PoolManager(num_pools=connections, maxsize=maxsize, block=block, **pool_kwargs)
+
+    def get_connection(self, url, proxies=None):
+        """Connection Pool مربوط به IP ثابت را برمی‌گرداند."""
+        parsed = urlparse(url)
+        scheme = parsed.scheme
+        port = parsed.port or (443 if scheme == "https" else 80)
+        return self.poolmanager.connection_from_host(self.ip, port=port, scheme=scheme)
+
+    def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+        """Hook جدید Requests را نیز به همان IP اعتبارسنجی‌شده Pin می‌کند."""
+        return self.get_connection(request.url, proxies)
+
+
+def request_public_http(
+    url: str,
+    *,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    sensitive_headers: set[str] | None = None,
+    timeout: int = 15,
+    max_redirects: int = 3,
+) -> PublicHTTPResponse:
+    """درخواست HTTP(S) را با DNS pinning، Redirect validation و lifecycle امن پاسخ اجرا می‌کند."""
+    current = validate_public_http_url(url)
+    initial = urlparse(current)
+    protected_headers = {item.lower() for item in (sensitive_headers or set())}
+    protected_headers.update({"authorization", "proxy-authorization", "cookie"})
+    if protected_headers and initial.scheme.lower() != "https":
+        raise ValueError("ارسال Header حساس فقط روی HTTPS مجاز است.")
+
+    session = requests.Session()
+    try:
+        for _ in range(max_redirects + 1):
+            parsed = urlparse(current)
+            host = parsed.hostname or ""
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            ip = str(_resolve_public_addresses(host, port)[0])
+            adapter = _PinnedHostAdapter(host, ip)
+            session.mount(f"{parsed.scheme}://", adapter)
+            request_headers = dict(headers or {})
+            request_headers["Host"] = host if parsed.port is None else f"{host}:{parsed.port}"
+
+            same_origin = (
+                parsed.scheme.lower() == initial.scheme.lower()
+                and host.lower() == (initial.hostname or "").lower()
+                and port == (initial.port or (443 if initial.scheme == "https" else 80))
+            )
+            if not same_origin:
+                request_headers = {
+                    key: value for key, value in request_headers.items() if key.lower() not in protected_headers
+                }
+                request_headers["Host"] = host if parsed.port is None else f"{host}:{parsed.port}"
+
+            response = session.request(
+                method,
+                current,
+                headers=request_headers,
+                timeout=timeout,
+                allow_redirects=False,
+                stream=True,
+            )
+            if response.status_code not in {301, 302, 303, 307, 308}:
+                result = PublicHTTPResponse(response.status_code, dict(response.headers))
+                response.close()
+                return result
+            location = response.headers.get("Location")
+            if not location:
+                result = PublicHTTPResponse(response.status_code, dict(response.headers))
+                response.close()
+                return result
+            next_url = validate_public_http_url(urljoin(current, location))
+            response.close()
+            current = next_url
+        raise ValueError("تعداد Redirectهای URL از حد مجاز بیشتر است.")
+    finally:
+        session.close()
