@@ -9,24 +9,21 @@ from manager.task_status import TaskStatus
 
 
 class BusinessGrowthRuntime:
-    """اجرای end-to-end چرخه رشد با context مشترک و engineering handoff."""
+    """اجرای end-to-end چرخه رشد با context تجمعی و engineering handoff امن."""
 
     def __init__(self, executor) -> None:
         self.executor = executor
 
     def run(self, request: str, target: str | None = None) -> list[dict]:
         max_cycles = max(1, int(os.getenv("BUSINESS_GROWTH_MAX_CYCLES", "1")))
+        max_context_chars = max(4000, int(os.getenv("BUSINESS_GROWTH_MAX_CONTEXT_CHARS", "30000")))
         history: list[dict] = []
         context = request
 
         for cycle in range(1, max_cycles + 1):
             tasks = BusinessGrowthPipeline().build(context, target=target)
             for task in tasks:
-                if history:
-                    task.description += (
-                        "\n\nContext چرخه/مرحله قبل:\n"
-                        + history[-1]["result"]
-                    )
+                task.description = self._stage_context(request, target, history, max_context_chars)
                 task.status = TaskStatus.PENDING
                 result = self.executor.run([task])[0]
 
@@ -43,14 +40,37 @@ class BusinessGrowthRuntime:
                     "status": task.status.value,
                     "result": result,
                 })
-
                 context = result
 
-            # چرخه بعدی با یافته‌های optimizer آغاز می‌شود؛ تعداد چرخه محدود و قابل تنظیم است.
             if cycle < max_cycles:
                 context = history[-1]["result"]
 
         return history
+
+    @staticmethod
+    def _stage_context(
+        request: str,
+        target: str | None,
+        history: list[dict],
+        max_chars: int,
+    ) -> str:
+        header = request
+        if target:
+            header = f"کسب‌وکار هدف: {target}\nدرخواست اصلی: {request}"
+
+        if not history:
+            return header
+
+        previous = "\n\n".join(
+            f"مرحله {item['agent']}:\n{item['result']}"
+            for item in history[-6:]
+        )
+        context = (
+            f"{header}\n\n"
+            "خروجی مرحله قبلی و context تجمعی:\n"
+            f"{previous}"
+        )
+        return context[-max_chars:]
 
     def _execute_engineering_plan(self, task: Task, result: str) -> str:
         try:
@@ -72,11 +92,28 @@ class BusinessGrowthRuntime:
             "repair_changes": plan.get("repair_changes", []),
             "pr": plan.get("pr", {}),
         }
-        execution = self.executor.run([Task(
-            id=f"{task.id}:engineering",
-            title=f"ساخت سایت: {task.title}",
-            description=json.dumps(command, ensure_ascii=False),
-            agent="github-project",
-        )])[0]
-        data["engineering_execution"] = json.loads(execution) if isinstance(execution, str) else execution
+
+        try:
+            execution = self.executor.run([Task(
+                id=f"{task.id}:engineering",
+                title=f"ساخت سایت: {task.title}",
+                description=json.dumps(command, ensure_ascii=False),
+                agent="github-project",
+            )])[0]
+            data["engineering_execution"] = (
+                json.loads(execution) if isinstance(execution, str) else execution
+            )
+        except Exception as error:
+            if os.getenv("BUSINESS_GROWTH_STRICT_ENGINEERING", "0").lower() in {"1", "true", "yes"}:
+                raise
+            data["engineering_execution"] = {
+                "state": "blocked",
+                "external_execution": False,
+                "reason": str(error),
+                "next_action": (
+                    "repository target را ایجاد/متصل کنید یا "
+                    "BUSINESS_GROWTH_REPOSITORY را به یک repository موجود تغییر دهید."
+                ),
+            }
+
         return json.dumps(data, ensure_ascii=False)
