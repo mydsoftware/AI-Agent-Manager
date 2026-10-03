@@ -4,15 +4,20 @@ import json
 import os
 
 from manager.business_growth import BusinessGrowthPipeline
+from manager.growth_action_planner import GrowthActionPlanner
+from manager.growth_actions import GrowthActionRegistry
 from manager.task import Task
 from manager.task_status import TaskStatus
 
 
 class BusinessGrowthRuntime:
-    """اجرای end-to-end چرخه رشد با context تجمعی و engineering handoff امن."""
+    """اجرای end-to-end چرخه رشد با context تجمعی، action execution و engineering handoff امن."""
 
-    def __init__(self, executor) -> None:
+    def __init__(self, executor, action_registry: GrowthActionRegistry | None = None) -> None:
         self.executor = executor
+        self.action_registry = action_registry or GrowthActionRegistry()
+        self.action_planner = GrowthActionPlanner()
+        self._executed_action_keys: set[str] = set()
 
     def run(self, request: str, target: str | None = None) -> list[dict]:
         max_cycles = max(1, int(os.getenv("BUSINESS_GROWTH_MAX_CYCLES", "1")))
@@ -30,6 +35,7 @@ class BusinessGrowthRuntime:
                 if task.agent == "website-builder":
                     result = self._execute_engineering_plan(task, result)
 
+                result = self._execute_planned_actions(task.agent, result)
                 task.result = result
                 task.status = TaskStatus.SUCCESS
                 history.append({
@@ -46,6 +52,41 @@ class BusinessGrowthRuntime:
                 context = history[-1]["result"]
 
         return history
+
+    def _execute_planned_actions(self, phase: str, result: str) -> str:
+        planned = self.action_planner.plan(result, phase)
+        if not planned:
+            return result
+
+        executions = []
+        for item in planned:
+            if item.key in self._executed_action_keys:
+                executions.append({
+                    "status": "skipped",
+                    "action": item.action.name,
+                    "phase": item.action.phase,
+                    "external_execution": False,
+                    "data": {"reason": "duplicate_action", "idempotency_key": item.key},
+                })
+                continue
+
+            execution = self.action_registry.execute(item.action)
+            self._executed_action_keys.add(item.key)
+            executions.append({
+                **execution,
+                "data": {
+                    **execution.get("data", {}),
+                    "idempotency_key": item.key,
+                },
+            })
+
+        try:
+            data = json.loads(result)
+        except (TypeError, json.JSONDecodeError):
+            data = {"raw_result": result}
+
+        data["action_execution"] = executions
+        return json.dumps(data, ensure_ascii=False)
 
     @staticmethod
     def _stage_context(
