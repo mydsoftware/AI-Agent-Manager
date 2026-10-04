@@ -15,7 +15,7 @@ export async function POST(request:Request){
   if(!ALLOWED_TYPES.has(file.type))return NextResponse.json({error:"نوع فایل مجاز نیست."},{status:400});
   const [existingCase]=await db.select({id:cases.id}).from(cases).where(eq(cases.id,caseId)).limit(1);
   if(!existingCase)return NextResponse.json({error:"پرونده پیدا نشد."},{status:404});
-  const blob=await put("cases/"+caseId+"/"+Date.now()+"-"+safeName(file.name),file,{access:"private",addRandomSuffix:true});
+  const blob=await put("cases/"+caseId+"/"+Date.now()+"-"+safeName(file.name),file,{access:"public",addRandomSuffix:true});
   const [doc]=await db.insert(documents).values({caseId,name:safeName(file.name),url:blob.url,pathname:blob.pathname,mimeType:file.type,size:file.size}).returning();
   return NextResponse.json(doc);
 }
