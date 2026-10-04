@@ -42,3 +42,19 @@ class GrowthServiceContext:
         if values is None:
             raise ValueError(f"سرویس ناشناخته: {service}")
         return all(bool(value) for value in values)
+
+
+
+def build_http_adapters(context):
+    """Providerهای HTTP را فقط برای سرویس‌های دارای credential فعال می‌کند."""
+    from manager.growth_http_adapter import HTTPGrowthAdapter
+
+    adapters = {}
+    if context.configured("crm"):
+        for action in ("create_lead", "qualify_lead", "record_sale"):
+            adapters[action] = HTTPGrowthAdapter(context.crm_base_url, context.crm_api_key)
+    if context.configured("whatsapp"):
+        adapters["send_follow_up"] = HTTPGrowthAdapter(context.whatsapp_base_url, context.whatsapp_api_key)
+    if context.configured("lead_source"):
+        adapters["collect_search_console"] = HTTPGrowthAdapter(context.lead_source_base_url, context.lead_source_api_key)
+    return adapters
