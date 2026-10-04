@@ -5,6 +5,7 @@ import json
 from agents.registry import SpecialistRegistry, create_default_registry
 from manager.agent_governance import AgentGovernance
 from manager.business_growth_runtime import BusinessGrowthRuntime
+from manager.growth_actions import GrowthActionRegistry
 from manager.executor import TaskExecutor
 from manager.intent_router import IntentRouter
 from manager.loop import AgenticLoop
@@ -16,7 +17,7 @@ from manager.task_router import IntelligentTaskRouter
 class ManagerApplication:
     """درگاه اجرایی اصلی Manager Agent برای وظایف تخصصی."""
 
-    def __init__(self, registry: SpecialistRegistry | None = None, governance: AgentGovernance | None = None) -> None:
+    def __init__(self, registry: SpecialistRegistry | None = None, governance: AgentGovernance | None = None, growth_actions: GrowthActionRegistry | None = None) -> None:
         self.registry = registry or create_default_registry()
         self.governance = governance
         self.router = Router(self.registry, governance)
@@ -24,7 +25,7 @@ class ManagerApplication:
         self.loop = AgenticLoop(self.router)
         self.executor = TaskExecutor(self.loop)
         self.intent_router = IntentRouter()
-        self.business_growth_runtime = BusinessGrowthRuntime(self.executor)
+        self.business_growth_runtime = BusinessGrowthRuntime(self.executor, growth_actions)
 
     def run(self, task: Task) -> str:
         """وظیفه را تحلیل، مسیریابی و در صورت درخواست وارد چرخه رشد کسب‌وکار یا مهندسی می‌کند."""
